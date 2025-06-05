@@ -413,6 +413,17 @@
         </div>
     </div>
 
+    <!-- Panel de gestión de administradores (solo visible para Kamina) -->
+    <div id="adminsPanel" class="admin-section bg-white p-6 rounded-xl shadow-xl w-full max-w-2xl mt-8 hidden">
+        <h3 class="text-xl font-bold mb-4">Gestión de Administradores</h3>
+        <form id="addAdminForm" class="flex flex-col sm:flex-row gap-3 mb-4">
+            <input type="text" id="newAdminUser" placeholder="Nuevo usuario" required class="flex-1 px-3 py-2 border rounded-md">
+            <input type="password" id="newAdminPass" placeholder="Contraseña" required class="flex-1 px-3 py-2 border rounded-md">
+            <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded-md">Agregar</button>
+        </form>
+        <ul id="adminsList" class="space-y-2"></ul>
+    </div>
+
     <div id="printArea" class="hidden"></div>
     <div id="messageArea" class="message-popup"></div>
 
@@ -496,10 +507,10 @@
         const printSelectedClientReceiptBtn = document.getElementById('printSelectedClientReceiptBtn');
         const cancelGlobalPrintBtn = document.getElementById('cancelGlobalPrintBtn');
 
-        const ADMIN_USER = "Kamina";
-        const ADMIN_PASS = "Jesus1999";
         let loansData = [];
-        let sesionActiva = false;
+let sesionActiva = false;
+let usuarioActual = null; // Nuevo: para saber quién está logueado
+
         // Variable para gestionar la edición de un pago
         let currentEditingPaymentInfo = { loanId: null, pagoIndex: -1 };
 
@@ -1001,10 +1012,16 @@
 
         // --- SECCIÓN DE ADMINISTRACIÓN ---
         function showAdminSection() {
-            checkAndApplyMoraToAllLoans();
+            function showAdminSection() {
             mainFormContainer.classList.add('hidden');
             adminSection.classList.remove('hidden');
-            adminSection.style.display = 'block';
+            if (usuarioActual === 'Kamina') {
+                adminsPanel.classList.remove('hidden');
+                updateAdminsPanel();
+            } else {
+                adminsPanel.classList.add('hidden');
+            }
+        }    adminSection.style.display = 'block';
             updateAdminTable();
             updateGlobalStats();
         }
@@ -1213,21 +1230,103 @@
 
         cancelLoginBtn.addEventListener('click', () => { loginModal.style.display = 'none'; });
 
-        loginFormElement.addEventListener('submit', (e) => {
+        loginFormElement.addEventListener('submit', async (e) => {
             e.preventDefault();
-            if (usernameInput.value === ADMIN_USER && passwordInput.value === ADMIN_PASS) {
-                sesionActiva = true;
-                loginModal.style.display = 'none';
-                showAdminSection();
-                showMessage('Acceso concedido. Bienvenido a la administración.', 'success');
-            } else {
-                showMessage('Usuario o contraseña incorrectos. Intente de nuevo.', 'error');
-                passwordInput.value = '';
-                passwordInput.focus();
+            try {
+                const res = await fetch('http://localhost:3001/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ username: usernameInput.value, password: passwordInput.value })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    sesionActiva = true;
+                    usuarioActual = data.username;
+                    loginModal.style.display = 'none';
+                    showAdminSection();
+                    showMessage('Acceso concedido. Bienvenido a la administración.', 'success');
+                    updateAdminsPanel();
+                } else {
+                    showMessage(data.error || 'Usuario o contraseña incorrectos. Intente de nuevo.', 'error');
+                    passwordInput.value = '';
+                    passwordInput.focus();
+                }
+            } catch (err) {
+                showMessage('Error de conexión con el servidor.', 'error');
             }
         });
 
         backToFormBtn.addEventListener('click', showMainForm);
+
+        // --- PANEL DE ADMINISTRADORES (solo Kamina) ---
+        const adminsPanel = document.getElementById('adminsPanel');
+        const addAdminForm = document.getElementById('addAdminForm');
+        const newAdminUser = document.getElementById('newAdminUser');
+        const newAdminPass = document.getElementById('newAdminPass');
+        const adminsList = document.getElementById('adminsList');
+
+        async function updateAdminsPanel() {
+            if (usuarioActual !== 'Kamina') return;
+            try {
+                const res = await fetch('http://localhost:3001/api/admins', { credentials: 'include' });
+                const users = await res.json();
+                adminsList.innerHTML = '';
+                users.forEach(user => {
+                    const li = document.createElement('li');
+                    li.className = 'flex items-center gap-3';
+                    li.textContent = user;
+                    if (user !== 'Kamina') {
+                        const delBtn = document.createElement('button');
+                        delBtn.textContent = 'Eliminar';
+                        delBtn.className = 'ml-4 px-2 py-1 bg-red-500 text-white rounded-md text-xs';
+                        delBtn.onclick = async () => {
+                            if (confirm('¿Seguro que deseas eliminar el admin ' + user + '?')) {
+                                await fetch('http://localhost:3001/api/admins/' + encodeURIComponent(user), {
+                                    method: 'DELETE', credentials: 'include'
+                                });
+                                updateAdminsPanel();
+                            }
+                        };
+                        li.appendChild(delBtn);
+                    }
+                    adminsList.appendChild(li);
+                });
+            } catch (err) {
+                adminsList.innerHTML = '<li class="text-red-500">Error al cargar admins</li>';
+            }
+        }
+
+        if (addAdminForm) {
+            addAdminForm.onsubmit = async (e) => {
+                e.preventDefault();
+                if (!newAdminUser.value.trim() || !newAdminPass.value.trim()) return;
+                try {
+                    const res = await fetch('http://localhost:3001/api/admins', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({ username: newAdminUser.value, password: newAdminPass.value })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        showMessage('Administrador agregado.', 'success');
+                        newAdminUser.value = '';
+                        newAdminPass.value = '';
+                        updateAdminsPanel();
+                    } else {
+                        showMessage(data.error || 'No se pudo agregar admin.', 'error');
+                    }
+                } catch (err) {
+                    showMessage('Error de conexión con el servidor.', 'error');
+                }
+            };
+        }
+
+        // Al cargar, preguntar si hay sesión activa
+        fetch('http://localhost:3001/api/whoami', { credentials: 'include' })
+            .then(r => r.json())
+            .then(data => { if (data.user) { sesionActiva = true; usuarioActual = data.user; } });
 
         // --- MODAL DE PAGO ---
         function openPaymentModal(loanId) {
