@@ -1,0 +1,5 @@
+{
+  "appId": "com.barberrd.app",
+  "appName": "barber-app",
+  "webDir": "frontend/dist"
+}
