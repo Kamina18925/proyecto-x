@@ -1,0 +1,14 @@
+# type(scope): resumen corto en presente
+#
+# Tipos: feat | fix | docs | chore | refactor | test
+# Scope: opcional (backend|frontend|db|infra|git|docs)
+#
+# Cuerpo (opcional):
+# - Que cambió y por qué
+# - Riesgos / notas de deploy
+#
+# Ejemplo:
+# feat(backend): bloquear duplicados de servicio el mismo día
+#
+# - Retorna 409 si existe una cita confirmed para el mismo servicio y día
+# - Mantiene timezone America/Santo_Domingo
