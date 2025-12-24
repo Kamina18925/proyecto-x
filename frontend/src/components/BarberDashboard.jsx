@@ -128,7 +128,7 @@ const BarberDashboard = () => {
 
         <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-slate-800 text-slate-100 p-4 lg:p-5 space-y-6 min-h-screen flex flex-col shadow-lg transition-transform duration-300 ease-in-out ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static lg:inset-auto`}>
           <div>
-            <h2 className="text-3xl font-bold text-center md:text-left text-white"> Barber<span className="text-indigo-400">RD</span> </h2>
+            <h2 className="text-3xl font-bold text-center md:text-left text-white"> Style<span className="text-indigo-400">x</span> </h2>
             <p className="text-xs text-center md:text-left text-slate-400 mt-1">Panel de Barbero</p>
           </div>
           <nav className="space-y-1.5 flex-grow">
