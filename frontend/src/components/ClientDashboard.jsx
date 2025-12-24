@@ -112,6 +112,76 @@ const ClientDashboard = () => {
     }
   };
 
+  const handleOpenDirectionsToShop = (shop) => {
+    const address = shop?.address;
+    const city = shop?.city;
+    const destination = [address, city].filter(Boolean).join(', ').trim();
+
+    if (!destination) {
+      dispatch({
+        type: 'SHOW_NOTIFICATION',
+        payload: { message: 'Este negocio no tiene dirección registrada.', type: 'error' },
+      });
+      return;
+    }
+
+    if (!navigator?.geolocation) {
+      dispatch({
+        type: 'SHOW_NOTIFICATION',
+        payload: { message: 'Tu navegador no soporta geolocalización. No se puede abrir la ruta.', type: 'error' },
+      });
+      return;
+    }
+
+    const popup = window.open('about:blank', '_blank', 'noopener,noreferrer');
+    if (!popup) {
+      dispatch({
+        type: 'SHOW_NOTIFICATION',
+        payload: { message: 'El navegador bloqueó la pestaña emergente. Permite pop-ups para abrir la ruta.', type: 'error' },
+      });
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos?.coords?.latitude;
+        const lng = pos?.coords?.longitude;
+
+        if (lat == null || lng == null) {
+          try { popup.close(); } catch (_) {}
+          dispatch({
+            type: 'SHOW_NOTIFICATION',
+            payload: { message: 'No se pudo obtener tu ubicación. Activa la ubicación e inténtalo de nuevo.', type: 'error' },
+          });
+          return;
+        }
+
+        const origin = `${lat},${lng}`;
+        const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
+        try {
+          popup.location.href = url;
+        } catch (e) {
+          try { popup.close(); } catch (_) {}
+          window.open(url, '_blank', 'noopener,noreferrer');
+        }
+      },
+      (err) => {
+        const denied = err && (err.code === 1 || String(err.message || '').toLowerCase().includes('denied'));
+        try { popup.close(); } catch (_) {}
+        dispatch({
+          type: 'SHOW_NOTIFICATION',
+          payload: {
+            message: denied
+              ? 'Para ver la ruta debes permitir la ubicación en el navegador. Actívala e inténtalo de nuevo.'
+              : 'No se pudo obtener tu ubicación. Verifica la configuración e inténtalo de nuevo.',
+            type: 'error',
+          },
+        });
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
+
   // Obtener hora actual del servidor cuando se monta el dashboard
   useEffect(() => {
     const fetchServerTime = async () => {
@@ -1252,7 +1322,14 @@ const ClientDashboard = () => {
                 <span className="inline-block bg-green-100 text-green-800 text-xs px-2 py-0.5 rounded-full font-semibold mb-2">Abierto</span>
                 <div className="flex items-center text-slate-600 text-sm mb-1">
                   <i className="fa-solid fa-map-marker-alt mr-2 text-indigo-400"></i>
-                  {shop.address}, {shop.city}
+                  <button
+                    type="button"
+                    onClick={() => handleOpenDirectionsToShop(shop)}
+                    className="text-left hover:underline"
+                    title="Abrir ruta en Google Maps"
+                  >
+                    {shop.address}, {shop.city}
+                  </button>
                 </div>
                 <div className="flex items-center text-slate-600 text-sm mb-1">
                   <i className="fa-solid fa-phone mr-2 text-indigo-400"></i>
@@ -1290,7 +1367,17 @@ const ClientDashboard = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <h3 className="text-lg font-bold text-indigo-700 mb-2">Información</h3>
-                <p><span className="font-semibold">Dirección:</span> {selectedShop.address}</p>
+                <p>
+                  <span className="font-semibold">Dirección:</span>{' '}
+                  <button
+                    type="button"
+                    onClick={() => handleOpenDirectionsToShop(selectedShop)}
+                    className="text-indigo-700 hover:underline"
+                    title="Abrir ruta en Google Maps"
+                  >
+                    {selectedShop.address}
+                  </button>
+                </p>
                 <p><span className="font-semibold">Ciudad:</span> {selectedShop.city}</p>
                 <p><span className="font-semibold">Teléfono:</span> {selectedShop.phone}</p>
               </div>
