@@ -1,7 +1,7 @@
 {
-  "name": "barber-app",
+  "name": "stylex",
   "version": "1.0.0",
-  "description": "Modern barber shop application",
+  "description": "Modern booking & business management application",
   "type": "module",
   "scripts": {
     "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
@@ -12,9 +12,11 @@
     "start": "cd backend && npm start"
   },
   "keywords": [
-    "barber",
+    "booking",
+    "appointments",
+    "beauty",
     "appointment",
-    "booking"
+    "scheduling"
   ],
   "author": "",
   "license": "ISC",

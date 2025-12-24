@@ -17,7 +17,7 @@ const MainLayout = () => {
     if (user?.role === 'client') {
       return [
         { to: '/dashboard', label: 'Dashboard' },
-        { to: '/barbershops', label: 'Find Barber Shops' },
+        { to: '/barbershops', label: 'Find Businesses' },
         { to: '/appointments', label: 'My Appointments' },
       ];
     } else if (user?.role === 'barber') {
@@ -33,7 +33,7 @@ const MainLayout = () => {
         { to: '/dashboard', label: 'Dashboard' },
         { to: '/owner/shops', label: 'My Shops' },
         { to: '/owner/services', label: 'Services' },
-        { to: '/owner/barbers', label: 'Barbers' },
+        { to: '/owner/barbers', label: 'Professionals' },
         { to: '/owner/appointments', label: 'Appointments' },
         { to: '/owner/products', label: 'Products' },
       ];
@@ -47,7 +47,7 @@ const MainLayout = () => {
     <div className="min-h-screen flex flex-col md:flex-row bg-gray-100">
       {/* Mobile Header */}
       <div className="md:hidden bg-indigo-800 text-white p-4 flex justify-between items-center">
-        <h1 className="text-xl font-bold">BarberRD</h1>
+        <h1 className="text-xl font-bold">Stylex</h1>
         <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2">
           {sidebarOpen ? <FaTimes size={24} /> : <FaBars size={24} />}
         </button>
@@ -56,8 +56,8 @@ const MainLayout = () => {
       {/* Sidebar */}
       <div className={`${sidebarOpen ? 'block' : 'hidden'} md:block md:w-64 bg-indigo-800 text-white p-6 space-y-6 min-h-screen`}>
         <div className="hidden md:block">
-          <h1 className="text-2xl font-bold">BarberRD</h1>
-          <p className="text-xs text-indigo-300 mt-1">Professional Barber Shop</p>
+          <h1 className="text-2xl font-bold">Stylex</h1>
+          <p className="text-xs text-indigo-300 mt-1">Booking & Business Management</p>
         </div>
 
         <div className="flex flex-col space-y-1">

@@ -220,7 +220,7 @@ const LoginPage = () => {
       )}
       <div className="w-full max-w-sm">
         <div className="text-center mb-10">
-          <h1 className="text-5xl font-extrabold text-slate-800 tracking-tight">Barber<span className="text-indigo-600">RD</span></h1>
+          <h1 className="text-5xl font-extrabold text-slate-800 tracking-tight">Style<span className="text-indigo-600">x</span></h1>
         </div>
         <div className="bg-white py-8 px-6 shadow-2xl rounded-xl sm:px-10">
           <form onSubmit={handleLogin} className="space-y-6">
@@ -243,7 +243,7 @@ const LoginPage = () => {
             <a href="#" onClick={e => { e.preventDefault(); setShowRegistration(true); }} className="font-medium text-indigo-600 hover:text-indigo-500 hover:underline">Crear cuenta</a>
           </div>
         </div>
-        <p className="mt-10 text-center text-xs text-slate-500">&copy; {new Date().getFullYear()} BarberRD. Todos los derechos reservados.</p>
+        <p className="mt-10 text-center text-xs text-slate-500">&copy; {new Date().getFullYear()} Stylex. Todos los derechos reservados.</p>
       </div>
       {/* Modal de registro */}
       {showRegistration && (

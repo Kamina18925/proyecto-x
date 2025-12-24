@@ -212,11 +212,11 @@ $$ LANGUAGE plpgsql;
 /*
 -- Insertar usuario administrador
 INSERT INTO users (username, email, password, first_name, last_name, role)
-VALUES ('admin', 'admin@barberiard.com', '$2a$10$JwYX5QsZ9SJg.Yt2Ul68IO.LHCeTHk79zKrjUK7MFVM3FVNR8MlZm', 'Admin', 'User', 'admin');
+VALUES ('admin', 'admin@stylex.app', '$2a$10$JwYX5QsZ9SJg.Yt2Ul68IO.LHCeTHk79zKrjUK7MFVM3FVNR8MlZm', 'Admin', 'User', 'admin');
 
 -- Insertar propietario de barbería
 INSERT INTO users (username, email, password, first_name, last_name, role)
-VALUES ('owner', 'owner@barberiard.com', '$2a$10$JwYX5QsZ9SJg.Yt2Ul68IO.LHCeTHk79zKrjUK7MFVM3FVNR8MlZm', 'Owner', 'User', 'owner');
+VALUES ('owner', 'owner@stylex.app', '$2a$10$JwYX5QsZ9SJg.Yt2Ul68IO.LHCeTHk79zKrjUK7MFVM3FVNR8MlZm', 'Owner', 'User', 'owner');
 
 -- Insertar barbería
 INSERT INTO barber_shops (name, address, city, state, country, owner_id, description)

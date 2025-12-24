@@ -1,14 +1,14 @@
-# BarberRD - Barber Shop Management System
+# Stylex - Booking & Business Management System
 
-A modern, full-stack application for managing barber shops, appointments, services, and products.
+A modern, full-stack application for managing beauty and personal care businesses (barbershops, salons, etc.), appointments, services, and products.
 
 ## Features
 
-- **User Roles**: Client, Barber, and Shop Owner
+- **User Roles**: Client, Professional, and Business Owner
 - **Appointment Management**: Book, reschedule, and cancel appointments
-- **Service Management**: Manage catalog and barber-specific services
+- **Service Management**: Manage catalog and professional-specific services
 - **Product Management**: Track inventory and sales of products
-- **Barber Availability**: Set and manage barber working hours
+- **Professional Availability**: Set and manage professional working hours
 - **Reviews and Ratings**: Allow clients to rate and review services
 
 ## Tech Stack
@@ -28,7 +28,7 @@ A modern, full-stack application for managing barber shops, appointments, servic
 ## Project Structure
 
 ```
-barber-app/
+proyecto-x/
 ├── frontend/             # React frontend application
 │   ├── public/           # Static assets
 │   └── src/              # Source code
@@ -55,8 +55,8 @@ barber-app/
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/barber-app.git
-   cd barber-app
+   git clone https://github.com/Kamina18925/proyecto-x.git
+   cd "proyecto-x"
    ```
 
 2. Install dependencies:
@@ -82,15 +82,12 @@ barber-app/
 
 The application uses a PostgreSQL database with the following main tables:
 
-- `users`: Stores user information (clients, barbers, owners)
-- `barbershops`: Stores information about barber shops
-- `masterservices`: Catalog of available services
-- `barberservices`: Barber-specific service configurations
+- `users`: Stores user information (clients, professionals, owners)
+- `barber_shops`: Stores information about businesses
+- `services`: Catalog of available services
 - `appointments`: Client appointments
-- `barberavailability`: Barber working hours
 - `products`: Products available for sale
-- `productsales`: Record of product sales
-- `reviews`: Client reviews for shops and services
+- `reviews`: Client reviews
 
 ## API Endpoints
 
@@ -98,7 +95,7 @@ The backend provides RESTful API endpoints for all functionality:
 
 - `/api/auth`: Authentication (login, register)
 - `/api/users`: User management
-- `/api/shops`: Barber shop management
+- `/api/shops`: Business management
 - `/api/services`: Service management
 - `/api/appointments`: Appointment booking and management
 - `/api/products`: Product management and sales
@@ -107,9 +104,10 @@ The backend provides RESTful API endpoints for all functionality:
 
 For testing purposes, the following demo accounts are available:
 
-- **Client**: client@example.com / password123
-- **Barber**: barber@example.com / password123
-- **Owner**: owner@example.com / password123
+- **Admin**: admin@stylex.app / Admin123!
+- **Owner**: owner@stylex.app / Admin123!
+- **Professional**: barber@stylex.app / Barber123!
+- **Client**: cliente@stylex.app / Cliente123!
 
 ## License
 

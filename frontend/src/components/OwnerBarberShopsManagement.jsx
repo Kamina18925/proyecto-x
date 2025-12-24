@@ -893,7 +893,7 @@ const handleDelete = (shopId) => {
                 <label className="block text-sm font-semibold mb-1">Facebook</label>
                 <div className="flex items-center">
                   <span className="bg-slate-100 p-2 border border-r-0 rounded-l-md text-slate-500">facebook.com/</span>
-                  <input type="text" name="facebook" value={form.facebook} onChange={handleChange} className="w-full p-2 border rounded-r-md" placeholder="barberiard" />
+                  <input type="text" name="facebook" value={form.facebook} onChange={handleChange} className="w-full p-2 border rounded-r-md" placeholder="stylex" />
                 </div>
               </div>
             </div>
