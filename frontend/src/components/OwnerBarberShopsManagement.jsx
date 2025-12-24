@@ -14,13 +14,16 @@ const OwnerBarberShopsManagement = () => {
   const [form, setForm] = useState({ 
     name: '', 
     address: '', 
+    sector: '',
     city: '', 
     phone: '',
     email: '',
     openHours: '',
     description: '',
     instagram: '',
-    facebook: ''
+    facebook: '',
+    latitude: '',
+    longitude: ''
   });
   const [ownerForm, setOwnerForm] = useState({
     ownerName: '',
@@ -83,13 +86,16 @@ const OwnerBarberShopsManagement = () => {
     setForm({ 
       name: '', 
       address: '', 
+      sector: '',
       city: '', 
       phone: '',
       email: '',
       openHours: '',
       description: '',
       instagram: '',
-      facebook: ''
+      facebook: '',
+      latitude: '',
+      longitude: ''
     });
     setOwnerForm({
       ownerName: '',
@@ -105,6 +111,7 @@ const OwnerBarberShopsManagement = () => {
   };
   
   const handleOpenEdit = (shop) => {
+    const schedule = shop?.schedule || {};
     setForm({ 
       name: shop.name || '', 
       address: shop.address || '', 
@@ -114,7 +121,10 @@ const OwnerBarberShopsManagement = () => {
       openHours: shop.openHours || '',
       description: shop.description || '',
       instagram: shop.instagram || '',
-      facebook: shop.facebook || ''
+      facebook: shop.facebook || '',
+      sector: shop.sector || schedule.sector || '',
+      latitude: (shop.latitude ?? schedule.latitude ?? schedule.lat ?? '') + '',
+      longitude: (shop.longitude ?? schedule.longitude ?? schedule.lng ?? '') + ''
     });
     setSelectedShop(shop);
     setError('');
@@ -166,6 +176,48 @@ const OwnerBarberShopsManagement = () => {
   };
   const handleChange = e => {
     setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
+  const buildShopLocationQuery = (data) => {
+    const addr = data?.address;
+    const sector = data?.sector;
+    const city = data?.city;
+    return [addr, sector, city, 'República Dominicana'].filter(Boolean).join(', ');
+  };
+
+  const handleCaptureExactLocation = () => {
+    setError('');
+    if (!navigator?.geolocation) {
+      return setError('Tu navegador no soporta geolocalización. No se puede capturar la ubicación exacta.');
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos?.coords?.latitude;
+        const lng = pos?.coords?.longitude;
+        if (lat == null || lng == null) {
+          return setError('No se pudo obtener la ubicación exacta. Activa la ubicación e inténtalo de nuevo.');
+        }
+        setForm(prev => ({
+          ...prev,
+          latitude: String(lat),
+          longitude: String(lng),
+        }));
+        dispatch({
+          type: 'SHOW_NOTIFICATION',
+          payload: { message: 'Ubicación exacta capturada correctamente.', type: 'success' },
+        });
+      },
+      (err) => {
+        const denied = err && (err.code === 1 || String(err.message || '').toLowerCase().includes('denied'));
+        setError(
+          denied
+            ? 'Debes permitir la ubicación para capturar la dirección exacta.'
+            : 'No se pudo capturar la ubicación exacta. Verifica la configuración e inténtalo de nuevo.'
+        );
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
   };
   const handleOwnerChange = e => {
     const { name, value, type, checked } = e.target;
@@ -482,6 +534,9 @@ const handleDelete = (shopId) => {
     if (!form.name?.trim()) return setError('El nombre es obligatorio');
     if (!form.address?.trim()) return setError('La dirección es obligatoria');
     if (!form.city?.trim()) return setError('La ciudad es obligatoria');
+    if (!String(form.latitude || '').trim() || !String(form.longitude || '').trim()) {
+      return setError('Debes capturar la ubicación exacta (GPS) antes de guardar.');
+    }
     const isCreating = !selectedShop;
     // Solo necesitamos datos del dueño cuando es la primera barbería de este dueño
     const needsOwnerData = isCreating && !ownerHasAnyShop;
@@ -550,44 +605,56 @@ const handleDelete = (shopId) => {
       }
       
       // Actualizar el estado con la nueva/actualizada barbería
+      // Guardar en backend para persistir (incluye sector/lat/lng dentro de schedule)
+      const payloadToSave = {
+        ...shopData,
+        photoUrl,
+      };
+
+      let saved;
       if (isCreating) {
-        // Añadir nueva barbería
-        dispatch({ 
-          type: 'ADD_BARBERSHOP', 
-          payload: { ...shopData, photoUrl }
-        });
-        
-        // Mostrar notificación de éxito
+        saved = await api.barberShops.create(payloadToSave);
+      } else {
+        saved = await api.barberShops.update(String(selectedShop.id), payloadToSave);
+      }
+
+      // Normalizar respuesta (schedule puede traer city/phone/etc)
+      const schedule = saved?.schedule || {};
+      const normalizedSaved = {
+        ...saved,
+        ownerId: saved?.ownerId !== undefined ? saved.ownerId : (saved?.owner_id !== undefined ? saved.owner_id : owner.id),
+        city: saved?.city || schedule.city || payloadToSave.city || '',
+        sector: saved?.sector || schedule.sector || payloadToSave.sector || '',
+        phone: saved?.phone || schedule.phone || payloadToSave.phone || '',
+        openHours: saved?.openHours || schedule.openHours || payloadToSave.openHours || '',
+        description: saved?.description || schedule.description || payloadToSave.description || '',
+        email: saved?.email || schedule.email || payloadToSave.email || '',
+        photoUrl: saved?.photoUrl || schedule.photoUrl || photoUrl || '',
+        latitude: saved?.latitude ?? schedule.latitude ?? schedule.lat ?? payloadToSave.latitude ?? '',
+        longitude: saved?.longitude ?? schedule.longitude ?? schedule.lng ?? payloadToSave.longitude ?? '',
+      };
+
+      if (isCreating) {
+        dispatch({ type: 'ADD_BARBERSHOP', payload: normalizedSaved });
         dispatch({
           type: 'SHOW_NOTIFICATION',
-          payload: {
-            message: 'Barbería añadida correctamente',
-            type: 'success'
-          }
+          payload: { message: 'Barbería añadida correctamente', type: 'success' }
         });
       } else {
-        // Actualizar barbería existente
-        dispatch({ 
-          type: 'EDIT_BARBERSHOP', 
-          payload: { ...shopData, photoUrl }
-        });
-        
-        // Mostrar notificación de éxito
+        dispatch({ type: 'EDIT_BARBERSHOP', payload: normalizedSaved });
         dispatch({
           type: 'SHOW_NOTIFICATION',
-          payload: {
-            message: 'Barbería actualizada correctamente',
-            type: 'success'
-          }
+          payload: { message: 'Barbería actualizada correctamente', type: 'success' }
         });
       }
       
       // Si hay una foto, actualizar también las fotos de la barbería
       if (photoUrl) {
+        const finalShopIdForPhoto = normalizedSaved?.id ?? shopId;
         dispatch({
           type: 'UPDATE_BARBERSHOP_PHOTO',
           payload: {
-            shopId: shopId,
+            shopId: finalShopIdForPhoto,
             photoUrl: photoUrl
           }
         });
@@ -863,6 +930,26 @@ const handleDelete = (shopId) => {
             <div>
               <label className="block text-sm font-semibold mb-1">Dirección *</label>
               <input type="text" name="address" value={form.address} onChange={handleChange} className="w-full p-2 border rounded" placeholder="Calle Principal #123" />
+              <div className="mt-2 flex flex-col sm:flex-row gap-2">
+                <button
+                  type="button"
+                  onClick={handleCaptureExactLocation}
+                  className="px-3 py-2 rounded-md bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold"
+                >
+                  Capturar ubicación exacta (GPS)
+                </button>
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(buildShopLocationQuery(form))}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold text-center"
+                >
+                  Verificar en Google Maps
+                </a>
+              </div>
+              <div className="mt-2 text-xs text-slate-500">
+                Ubicación guardada (lat, lng): {String(form.latitude || '').trim() && String(form.longitude || '').trim() ? `${form.latitude}, ${form.longitude}` : 'No capturada'}
+              </div>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -279,6 +279,11 @@ export const updateBarberShop = async (req, res) => {
       openHours,
       descripcion,
       description,
+      sector,
+      latitude,
+      longitude,
+      lat,
+      lng,
       owner_id,
       ownerId
     } = req.body;
@@ -300,6 +305,9 @@ export const updateBarberShop = async (req, res) => {
     const finalDescription = descripcion || description || null;
     const finalOwnerId = owner_id || ownerId || checkResult.rows[0].owner_id || null;
     const finalSchedule = horario || openHours || null;
+    const finalSector = sector || null;
+    const finalLatitude = latitude !== undefined ? latitude : (lat !== undefined ? lat : null);
+    const finalLongitude = longitude !== undefined ? longitude : (lng !== undefined ? lng : null);
 
     // Reconstruir schedule JSONB mezclando con el existente
     const currentSchedule = checkResult.rows[0].schedule || {};
@@ -307,6 +315,9 @@ export const updateBarberShop = async (req, res) => {
       ...currentSchedule,
       ...(finalSchedule !== null ? { openHours: finalSchedule } : {}),
       ...(finalPhone !== null ? { phone: finalPhone } : {}),
+      ...(finalSector !== null ? { sector: finalSector } : {}),
+      ...(finalLatitude != null ? { latitude: String(finalLatitude) } : {}),
+      ...(finalLongitude != null ? { longitude: String(finalLongitude) } : {}),
       ...(finalDescription !== null ? { description: finalDescription } : {}),
       ...(finalEmail !== null ? { email: finalEmail } : {}),
       ...(finalPhotoUrl !== null ? { photoUrl: finalPhotoUrl } : {})

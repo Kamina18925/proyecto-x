@@ -71,11 +71,14 @@ export const loadInitialState = async () => {
         ownerId: bs.ownerId !== undefined ? bs.ownerId : (bs.owner_id !== undefined ? bs.owner_id : null),
         // Datos derivados de schedule JSONB
         city: bs.city || schedule.city || '',
+        sector: bs.sector || schedule.sector || '',
         phone: bs.phone || schedule.phone || '',
         openHours: bs.openHours || schedule.openHours || '',
         description: bs.description || schedule.description || '',
         email: bs.email || schedule.email || '',
         photoUrl: bs.photoUrl || schedule.photoUrl || '',
+        latitude: bs.latitude !== undefined ? bs.latitude : (schedule.latitude !== undefined ? schedule.latitude : (schedule.lat !== undefined ? schedule.lat : '')),
+        longitude: bs.longitude !== undefined ? bs.longitude : (schedule.longitude !== undefined ? schedule.longitude : (schedule.lng !== undefined ? schedule.lng : '')),
       };
     });
     

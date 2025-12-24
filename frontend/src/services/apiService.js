@@ -1,5 +1,10 @@
 // API Service - Maneja las comunicaciones con el backend
-const API_BASE_URL = 'https://barber-backend-l519.onrender.com/api';
+const API_BASE_URL =
+  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL)
+    ? import.meta.env.VITE_API_BASE_URL
+    : ((typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'))
+      ? 'http://localhost:3000/api'
+      : 'https://barber-backend-l519.onrender.com/api');
 
 // Función auxiliar para manejar errores de fetch
 const handleFetchError = async (response) => {

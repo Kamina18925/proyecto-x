@@ -116,6 +116,8 @@ const ClientDashboard = () => {
     const address = shop?.address;
     const city = shop?.city;
     const destination = [address, city].filter(Boolean).join(', ').trim();
+    const shopLat = shop?.latitude ?? shop?.lat ?? shop?.schedule?.latitude ?? shop?.schedule?.lat;
+    const shopLng = shop?.longitude ?? shop?.lng ?? shop?.schedule?.longitude ?? shop?.schedule?.lng;
 
     if (!destination) {
       dispatch({
@@ -125,61 +127,20 @@ const ClientDashboard = () => {
       return;
     }
 
-    if (!navigator?.geolocation) {
+    const destParam = (shopLat != null && shopLng != null)
+      ? `${shopLat},${shopLng}`
+      : destination;
+
+    // Abrir Google Maps inmediatamente (acción directa del click, sin popups asíncronos).
+    // Google Maps pedirá la ubicación para calcular la ruta desde "Tu ubicación".
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destParam)}&travelmode=driving`;
+    const opened = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!opened) {
       dispatch({
         type: 'SHOW_NOTIFICATION',
-        payload: { message: 'Tu navegador no soporta geolocalización. No se puede abrir la ruta.', type: 'error' },
+        payload: { message: 'El navegador bloqueó la pestaña. Permite pop-ups o abre el enlace manualmente.', type: 'error' },
       });
-      return;
     }
-
-    const popup = window.open('about:blank', '_blank', 'noopener,noreferrer');
-    if (!popup) {
-      dispatch({
-        type: 'SHOW_NOTIFICATION',
-        payload: { message: 'El navegador bloqueó la pestaña emergente. Permite pop-ups para abrir la ruta.', type: 'error' },
-      });
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = pos?.coords?.latitude;
-        const lng = pos?.coords?.longitude;
-
-        if (lat == null || lng == null) {
-          try { popup.close(); } catch (_) {}
-          dispatch({
-            type: 'SHOW_NOTIFICATION',
-            payload: { message: 'No se pudo obtener tu ubicación. Activa la ubicación e inténtalo de nuevo.', type: 'error' },
-          });
-          return;
-        }
-
-        const origin = `${lat},${lng}`;
-        const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
-        try {
-          popup.location.href = url;
-        } catch (e) {
-          try { popup.close(); } catch (_) {}
-          window.open(url, '_blank', 'noopener,noreferrer');
-        }
-      },
-      (err) => {
-        const denied = err && (err.code === 1 || String(err.message || '').toLowerCase().includes('denied'));
-        try { popup.close(); } catch (_) {}
-        dispatch({
-          type: 'SHOW_NOTIFICATION',
-          payload: {
-            message: denied
-              ? 'Para ver la ruta debes permitir la ubicación en el navegador. Actívala e inténtalo de nuevo.'
-              : 'No se pudo obtener tu ubicación. Verifica la configuración e inténtalo de nuevo.',
-            type: 'error',
-          },
-        });
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
   };
 
   // Obtener hora actual del servidor cuando se monta el dashboard
