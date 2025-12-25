@@ -112,6 +112,38 @@ const ClientDashboard = () => {
     }
   };
 
+  const openUrlInNewTab = (url) => {
+    let newWin = null;
+    try {
+      newWin = window.open('about:blank', '_blank');
+    } catch {
+      newWin = null;
+    }
+
+    // Si el navegador bloquea popups o devuelve la misma pestaña, no navegamos la actual.
+    if (!newWin || newWin === window) {
+      dispatch({
+        type: 'SHOW_NOTIFICATION',
+        payload: { message: 'El navegador bloqueó la ventana emergente. Permite los popups para abrir WhatsApp.', type: 'error' }
+      });
+      return false;
+    }
+
+    try {
+      newWin.opener = null;
+    } catch {
+      // ignore
+    }
+
+    try {
+      newWin.location.href = url;
+    } catch {
+      // ignore
+    }
+
+    return true;
+  };
+
   const handleOpenDirectionsToShop = (shop) => {
     const address = shop?.address;
     const city = shop?.city;
@@ -134,13 +166,136 @@ const ClientDashboard = () => {
     // Abrir Google Maps inmediatamente (acción directa del click, sin popups asíncronos).
     // Google Maps pedirá la ubicación para calcular la ruta desde "Tu ubicación".
     const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destParam)}&travelmode=driving`;
-    const opened = window.open(url, '_blank', 'noopener,noreferrer');
-    if (!opened) {
+    openUrlInNewTab(url);
+  };
+
+  const handleOpenWhatsAppToShop = (shop) => {
+    const rawLink = shop?.whatsappLink ?? shop?.schedule?.whatsappLink;
+    const rawPhone = shop?.phone ?? shop?.schedule?.phone;
+
+    const trimmedLink = String(rawLink || '').trim();
+    const trimmedPhone = String(rawPhone || '').trim();
+
+    let url = '';
+    if (trimmedLink) {
+      url = trimmedLink;
+      if (!/^https?:\/\//i.test(url)) {
+        url = `https://${url}`;
+      }
+    } else if (trimmedPhone) {
+      const digitsRaw = trimmedPhone.replace(/\D/g, '');
+      if (digitsRaw) {
+        const digits = (digitsRaw.length === 10 && !digitsRaw.startsWith('1'))
+          ? `1${digitsRaw}`
+          : digitsRaw;
+        url = `https://wa.me/${digits}`;
+      }
+    }
+
+    if (!url) {
       dispatch({
         type: 'SHOW_NOTIFICATION',
-        payload: { message: 'El navegador bloqueó la pestaña. Permite pop-ups o abre el enlace manualmente.', type: 'error' },
+        payload: { message: 'Esta barbería no tiene WhatsApp configurado.', type: 'error' }
       });
+      return;
     }
+
+    openUrlInNewTab(url);
+  };
+
+  const handleOpenWhatsAppToBarber = (barber) => {
+    const rawLink = barber?.whatsappLink ?? barber?.whatsapp_link;
+    const rawPhone = barber?.phone ?? barber?.telefono;
+
+    const trimmedLink = String(rawLink || '').trim();
+    const trimmedPhone = String(rawPhone || '').trim();
+
+    let url = '';
+    if (trimmedLink) {
+      url = trimmedLink;
+      if (!/^https?:\/\//i.test(url)) {
+        url = `https://${url}`;
+      }
+    } else if (trimmedPhone) {
+      const digitsRaw = trimmedPhone.replace(/\D/g, '');
+      if (digitsRaw) {
+        const digits = (digitsRaw.length === 10 && !digitsRaw.startsWith('1'))
+          ? `1${digitsRaw}`
+          : digitsRaw;
+        url = `https://wa.me/${digits}`;
+      }
+    }
+
+    if (!url) {
+      dispatch({
+        type: 'SHOW_NOTIFICATION',
+        payload: { message: 'Este barbero no tiene WhatsApp configurado.', type: 'error' }
+      });
+      return;
+    }
+
+    openUrlInNewTab(url);
+  };
+
+  const handleOpenChatOptionsForBarber = (barber) => {
+    if (!barber?.id) return;
+
+    dispatch({
+      type: 'SHOW_MODAL',
+      payload: {
+        props: { title: 'Chatear con el barbero' },
+        content: (
+          <div className="p-4 space-y-3">
+            <p className="text-sm text-slate-600">
+              Elige cómo quieres comunicarte con <span className="font-semibold">{barber?.name || barber?.nombre || 'el barbero'}</span>.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                className="px-4 py-3 rounded-md bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  try {
+                    window.dispatchEvent(new CustomEvent('open-chat-widget', { detail: { barberId: barber.id } }));
+                  } catch (err) {
+                    console.error('No se pudo abrir el chat directo:', err);
+                  } finally {
+                    dispatch({ type: 'HIDE_MODAL' });
+                  }
+                }}
+              >
+                Chatear en la web
+              </button>
+              <button
+                type="button"
+                className="px-4 py-3 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  try {
+                    handleOpenWhatsAppToBarber(barber);
+                  } finally {
+                    dispatch({ type: 'HIDE_MODAL' });
+                  }
+                }}
+              >
+                Chatear en WhatsApp
+              </button>
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                className="px-4 py-2 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-800 text-sm font-semibold"
+                onClick={() => dispatch({ type: 'HIDE_MODAL' })}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        ),
+      },
+    });
   };
 
   // Obtener hora actual del servidor cuando se monta el dashboard
@@ -1282,19 +1437,42 @@ const ClientDashboard = () => {
                 <h2 className="text-lg font-semibold text-slate-900 mb-1">{shop.name}</h2>
                 <span className="inline-block bg-green-100 text-green-800 text-xs px-2 py-0.5 rounded-full font-semibold mb-2">Abierto</span>
                 <div className="flex items-center text-slate-600 text-sm mb-1">
-                  <i className="fa-solid fa-map-marker-alt mr-2 text-indigo-400"></i>
                   <button
                     type="button"
-                    onClick={() => handleOpenDirectionsToShop(shop)}
-                    className="text-left hover:underline"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleOpenDirectionsToShop(shop);
+                    }}
+                    className="inline-flex items-center text-left hover:underline"
                     title="Abrir ruta en Google Maps"
                   >
+                    <span className="inline-flex items-center mr-2 px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-semibold">
+                      <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 mr-1 text-red-600" fill="currentColor" aria-hidden="true">
+                        <path d="M12 2c3.87 0 7 3.13 7 7 0 5.25-7 13-7 13S5 14.25 5 9c0-3.87 3.13-7 7-7zm0 9.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z" />
+                      </svg>
+                      Google Maps
+                    </span>
                     {shop.address}, {shop.city}
                   </button>
                 </div>
                 <div className="flex items-center text-slate-600 text-sm mb-1">
-                  <i className="fa-solid fa-phone mr-2 text-indigo-400"></i>
-                  {shop.phone}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleOpenWhatsAppToShop(shop);
+                    }}
+                    className="inline-flex items-center gap-2 hover:underline"
+                    title="Abrir WhatsApp"
+                  >
+                    <svg viewBox="0 0 32 32" className="w-4 h-4 text-emerald-600" fill="currentColor" aria-hidden="true">
+                      <path d="M19.11 17.45c-.2-.1-1.19-.59-1.38-.65-.18-.07-.32-.1-.46.1-.14.2-.53.65-.65.79-.12.14-.24.16-.44.06-.2-.1-.86-.32-1.64-1.02-.6-.54-1.01-1.2-1.13-1.4-.12-.2-.01-.31.09-.41.09-.09.2-.24.3-.36.1-.12.14-.2.2-.34.06-.14.03-.26-.02-.36-.05-.1-.46-1.11-.63-1.52-.17-.4-.35-.35-.46-.35h-.39c-.14 0-.36.05-.55.26-.2.2-.72.7-.72 1.7 0 1 .74 1.96.84 2.1.1.14 1.46 2.22 3.53 3.11.49.21.88.34 1.18.43.5.16.95.14 1.31.09.4-.06 1.19-.49 1.36-.96.17-.47.17-.87.12-.96-.05-.1-.18-.16-.38-.26z" />
+                      <path d="M16 3C9.37 3 4 8.37 4 15c0 2.34.67 4.54 1.83 6.4L4 29l7.78-1.76C13.55 28.1 14.75 28.5 16 28.5c6.63 0 12-5.37 12-12S22.63 3 16 3zm0 22.5c-1.18 0-2.33-.29-3.36-.84l-.8-.42-4.62 1.05 1-4.5-.52-.83C6.89 18.5 6.5 16.77 6.5 15 6.5 9.76 10.76 5.5 16 5.5S25.5 9.76 25.5 15 21.24 25.5 16 25.5z" />
+                    </svg>
+                    <span>{shop.phone}</span>
+                  </button>
                 </div>
                 <div className="flex items-center gap-1 text-yellow-400 text-base mb-1">
                   <i className="fa-solid fa-star"></i>
@@ -1332,15 +1510,43 @@ const ClientDashboard = () => {
                   <span className="font-semibold">Dirección:</span>{' '}
                   <button
                     type="button"
-                    onClick={() => handleOpenDirectionsToShop(selectedShop)}
-                    className="text-indigo-700 hover:underline"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleOpenDirectionsToShop(selectedShop);
+                    }}
+                    className="inline-flex items-center text-indigo-700 hover:underline"
                     title="Abrir ruta en Google Maps"
                   >
+                    <span className="inline-flex items-center mr-2 px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-semibold">
+                      <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 mr-1 text-red-600" fill="currentColor" aria-hidden="true">
+                        <path d="M12 2c3.87 0 7 3.13 7 7 0 5.25-7 13-7 13S5 14.25 5 9c0-3.87 3.13-7 7-7zm0 9.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z" />
+                      </svg>
+                      Google Maps
+                    </span>
                     {selectedShop.address}
                   </button>
                 </p>
                 <p><span className="font-semibold">Ciudad:</span> {selectedShop.city}</p>
-                <p><span className="font-semibold">Teléfono:</span> {selectedShop.phone}</p>
+                <p className="flex items-center">
+                  <span className="font-semibold">Teléfono:</span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleOpenWhatsAppToShop(selectedShop);
+                    }}
+                    className="inline-flex items-center gap-2 ml-2 hover:underline"
+                    title="Abrir WhatsApp"
+                  >
+                    <svg viewBox="0 0 32 32" className="w-4 h-4 text-emerald-600" fill="currentColor" aria-hidden="true">
+                      <path d="M19.11 17.45c-.2-.1-1.19-.59-1.38-.65-.18-.07-.32-.1-.46.1-.14.2-.53.65-.65.79-.12.14-.24.16-.44.06-.2-.1-.86-.32-1.64-1.02-.6-.54-1.01-1.2-1.13-1.4-.12-.2-.01-.31.09-.41.09-.09.2-.24.3-.36.1-.12.14-.2.2-.34.06-.14.03-.26-.02-.36-.05-.1-.46-1.11-.63-1.52-.17-.4-.35-.35-.46-.35h-.39c-.14 0-.36.05-.55.26-.2.2-.72.7-.72 1.7 0 1 .74 1.96.84 2.1.1.14 1.46 2.22 3.53 3.11.49.21.88.34 1.18.43.5.16.95.14 1.31.09.4-.06 1.19-.49 1.36-.96.17-.47.17-.87.12-.96-.05-.1-.18-.16-.38-.26z" />
+                      <path d="M16 3C9.37 3 4 8.37 4 15c0 2.34.67 4.54 1.83 6.4L4 29l7.78-1.76C13.55 28.1 14.75 28.5 16 28.5c6.63 0 12-5.37 12-12S22.63 3 16 3zm0 22.5c-1.18 0-2.33-.29-3.36-.84l-.8-.42-4.62 1.05 1-4.5-.52-.83C6.89 18.5 6.5 16.77 6.5 15 6.5 9.76 10.76 5.5 16 5.5S25.5 9.76 25.5 15 21.24 25.5 16 25.5z" />
+                    </svg>
+                    <span>{selectedShop.phone}</span>
+                  </button>
+                </p>
               </div>
               <div>
                 <h3 className="text-lg font-bold text-indigo-700 mb-2">Servicios Disponibles</h3>
@@ -1383,11 +1589,7 @@ const ClientDashboard = () => {
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            try {
-                              window.dispatchEvent(new CustomEvent('open-chat-widget', { detail: { barberId: barb.id } }));
-                            } catch (err) {
-                              console.error('No se pudo abrir el chat directo:', err);
-                            }
+                            handleOpenChatOptionsForBarber(barb);
                           }}
                         >
                           Chatear

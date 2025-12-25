@@ -142,6 +142,9 @@ export const createBarberShop = async (req, res) => {
       city,
       telefono,
       phone,
+      whatsapp,
+      whatsappLink,
+      whatsapp_link,
       email,
       photoUrl,
       owner_id,
@@ -168,6 +171,7 @@ export const createBarberShop = async (req, res) => {
     const finalOwnerId = owner_id || ownerId || null;
     const finalDescription = descripcion || description || null;
     const finalSchedule = horario || openHours || null;
+    const finalWhatsappLink = whatsappLink || whatsapp_link || whatsapp || null;
 
     if (!finalName) {
       await client.query('ROLLBACK');
@@ -181,7 +185,8 @@ export const createBarberShop = async (req, res) => {
       city: finalCity,
       description: finalDescription,
       email: finalEmail,
-      photoUrl: finalPhotoUrl
+      photoUrl: finalPhotoUrl,
+      ...(finalWhatsappLink ? { whatsappLink: String(finalWhatsappLink) } : {})
     };
 
     // Determinar/crear el usuario dueño si se enviaron datos específicos
@@ -271,8 +276,13 @@ export const updateBarberShop = async (req, res) => {
       name,
       direccion,
       address,
+      ciudad,
+      city,
       telefono,
       phone,
+      whatsapp,
+      whatsappLink,
+      whatsapp_link,
       email,
       photoUrl,
       horario,
@@ -300,6 +310,7 @@ export const updateBarberShop = async (req, res) => {
     const finalName = nombre || name || checkResult.rows[0].name;
     const finalAddress = direccion || address || checkResult.rows[0].address || '';
     const finalPhone = telefono || phone || null;
+    const finalCity = ciudad || city || null;
     const finalEmail = email || null;
     const finalPhotoUrl = photoUrl || null;
     const finalDescription = descripcion || description || null;
@@ -308,6 +319,9 @@ export const updateBarberShop = async (req, res) => {
     const finalSector = sector || null;
     const finalLatitude = latitude !== undefined ? latitude : (lat !== undefined ? lat : null);
     const finalLongitude = longitude !== undefined ? longitude : (lng !== undefined ? lng : null);
+    const finalWhatsappLink = (whatsappLink !== undefined)
+      ? whatsappLink
+      : (whatsapp_link !== undefined ? whatsapp_link : (whatsapp !== undefined ? whatsapp : undefined));
 
     // Reconstruir schedule JSONB mezclando con el existente
     const currentSchedule = checkResult.rows[0].schedule || {};
@@ -315,12 +329,14 @@ export const updateBarberShop = async (req, res) => {
       ...currentSchedule,
       ...(finalSchedule !== null ? { openHours: finalSchedule } : {}),
       ...(finalPhone !== null ? { phone: finalPhone } : {}),
+      ...(finalCity !== null ? { city: finalCity } : {}),
       ...(finalSector !== null ? { sector: finalSector } : {}),
       ...(finalLatitude != null ? { latitude: String(finalLatitude) } : {}),
       ...(finalLongitude != null ? { longitude: String(finalLongitude) } : {}),
       ...(finalDescription !== null ? { description: finalDescription } : {}),
       ...(finalEmail !== null ? { email: finalEmail } : {}),
-      ...(finalPhotoUrl !== null ? { photoUrl: finalPhotoUrl } : {})
+      ...(finalPhotoUrl !== null ? { photoUrl: finalPhotoUrl } : {}),
+      ...(finalWhatsappLink !== undefined ? { whatsappLink: String(finalWhatsappLink || '') } : {})
     };
 
     const updateQuery = `

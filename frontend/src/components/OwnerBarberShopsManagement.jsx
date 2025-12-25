@@ -185,39 +185,88 @@ const OwnerBarberShopsManagement = () => {
     return [addr, sector, city, 'República Dominicana'].filter(Boolean).join(', ');
   };
 
-  const handleCaptureExactLocation = () => {
+  const handleCaptureExactLocation = async () => {
     setError('');
     if (!navigator?.geolocation) {
       return setError('Tu navegador no soporta geolocalización. No se puede capturar la ubicación exacta.');
     }
 
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = pos?.coords?.latitude;
-        const lng = pos?.coords?.longitude;
-        if (lat == null || lng == null) {
-          return setError('No se pudo obtener la ubicación exacta. Activa la ubicación e inténtalo de nuevo.');
+    const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    if (typeof window !== 'undefined' && window.location.protocol !== 'https:' && !isLocalhost) {
+      return setError('La geolocalización requiere HTTPS. Abre la app por https o usa localhost.');
+    }
+
+    if (navigator?.permissions?.query) {
+      try {
+        const perm = await navigator.permissions.query({ name: 'geolocation' });
+        if (perm?.state === 'denied') {
+          return setError('Debes permitir la ubicación en el navegador para capturar la dirección exacta.');
         }
-        setForm(prev => ({
-          ...prev,
-          latitude: String(lat),
-          longitude: String(lng),
-        }));
-        dispatch({
-          type: 'SHOW_NOTIFICATION',
-          payload: { message: 'Ubicación exacta capturada correctamente.', type: 'success' },
-        });
-      },
-      (err) => {
-        const denied = err && (err.code === 1 || String(err.message || '').toLowerCase().includes('denied'));
-        setError(
-          denied
-            ? 'Debes permitir la ubicación para capturar la dirección exacta.'
-            : 'No se pudo capturar la ubicación exacta. Verifica la configuración e inténtalo de nuevo.'
-        );
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
+      } catch (e) {
+        // ignorar (no todos los navegadores soportan el query de permisos para geolocalización)
+      }
+    }
+
+    const getPosition = (options) => new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, options);
+    });
+
+    const trySetCoords = (pos) => {
+      const lat = pos?.coords?.latitude;
+      const lng = pos?.coords?.longitude;
+      if (lat == null || lng == null) {
+        setError('No se pudo obtener la ubicación exacta. Activa la ubicación e inténtalo de nuevo.');
+        return false;
+      }
+      setForm(prev => ({
+        ...prev,
+        latitude: String(lat),
+        longitude: String(lng),
+      }));
+      dispatch({
+        type: 'SHOW_NOTIFICATION',
+        payload: { message: 'Ubicación exacta capturada correctamente.', type: 'success' },
+      });
+      return true;
+    };
+
+    const handleGeoError = (err) => {
+      const code = err?.code;
+      if (code === 1) {
+        setError('Debes permitir la ubicación para capturar la dirección exacta.');
+        return;
+      }
+      if (code === 3) {
+        setError('Tiempo de espera agotado al capturar ubicación. Intenta de nuevo o cambia a una red Wi‑Fi.');
+        return;
+      }
+      if (code === 2) {
+        setError('No se pudo obtener la ubicación (no disponible). Verifica GPS/Wi‑Fi e inténtalo de nuevo.');
+        return;
+      }
+      setError('No se pudo capturar la ubicación exacta. Verifica la configuración e inténtalo de nuevo.');
+    };
+
+    const optionsHigh = { enableHighAccuracy: true, timeout: 25000, maximumAge: 0 };
+    const optionsLow = { enableHighAccuracy: false, timeout: 25000, maximumAge: 60000 };
+
+    try {
+      const pos = await getPosition(optionsHigh);
+      if (trySetCoords(pos)) return;
+    } catch (err) {
+      const code = err?.code;
+      if (code === 1) {
+        handleGeoError(err);
+        return;
+      }
+
+      try {
+        const pos2 = await getPosition(optionsLow);
+        if (trySetCoords(pos2)) return;
+      } catch (err2) {
+        handleGeoError(err2);
+      }
+    }
   };
   const handleOwnerChange = e => {
     const { name, value, type, checked } = e.target;
@@ -626,6 +675,7 @@ const handleDelete = (shopId) => {
         city: saved?.city || schedule.city || payloadToSave.city || '',
         sector: saved?.sector || schedule.sector || payloadToSave.sector || '',
         phone: saved?.phone || schedule.phone || payloadToSave.phone || '',
+        whatsappLink: saved?.whatsappLink || schedule.whatsappLink || payloadToSave.whatsappLink || '',
         openHours: saved?.openHours || schedule.openHours || payloadToSave.openHours || '',
         description: saved?.description || schedule.description || payloadToSave.description || '',
         email: saved?.email || schedule.email || payloadToSave.email || '',

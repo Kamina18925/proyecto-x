@@ -50,6 +50,17 @@ const ensureConversationArchiveColumns = async () => {
   }
 };
 
+const ensureUsersWhatsappLinkColumn = async () => {
+  try {
+    await pool.query(
+      `ALTER TABLE users
+       ADD COLUMN IF NOT EXISTS whatsapp_link TEXT`
+    );
+  } catch (error) {
+    console.error('Error asegurando columna whatsapp_link en users:', error);
+  }
+};
+
 const cleanupChatMessagesByRetention = async () => {
   const client = await pool.connect();
   try {
@@ -82,6 +93,7 @@ const startServer = async () => {
   await ensureNotificationSoftDeleteColumns();
   await ensureAppointmentClientHiddenColumn();
   await ensureConversationArchiveColumns();
+  await ensureUsersWhatsappLinkColumn();
 
   // Ejecutar limpieza una vez al iniciar
   try {

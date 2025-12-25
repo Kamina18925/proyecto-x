@@ -48,7 +48,6 @@ const buildDisplayConversations = (rawList) => {
 
   const getPartnerId = (c) => c?.partner_id ?? c?.partnerId;
   const getUnread = (c) => Number(c?.unread_count ?? c?.unreadCount ?? 0) || 0;
-  const getPartnerName = (c) => c?.partner_name ?? c?.partnerName;
   const getTs = (c) => {
     const raw =
       c?.last_message_at ??
@@ -72,6 +71,8 @@ const buildDisplayConversations = (rawList) => {
         ...c,
         unread_count: getUnread(c),
         unreadCount: getUnread(c),
+        thread_count: 1,
+        threadCount: 1,
       });
       continue;
     }
@@ -80,13 +81,13 @@ const buildDisplayConversations = (rawList) => {
     const prevTs = getTs(prev);
     const nextTs = getTs(c);
     const chosen = nextTs >= prevTs ? c : prev;
-    const partner_name = getPartnerName(chosen) || getPartnerName(prev) || getPartnerName(c) || '';
 
     groups.set(key, {
       ...chosen,
-      partner_name,
       unread_count: sumUnread,
       unreadCount: sumUnread,
+      thread_count: (Number(prev.thread_count ?? prev.threadCount ?? 1) || 1) + 1,
+      threadCount: (Number(prev.thread_count ?? prev.threadCount ?? 1) || 1) + 1,
     });
   }
 
@@ -111,6 +112,7 @@ const ChatWidget = () => {
   const chatEndRef = useRef(null);
   const chatContainerRef = useRef(null);
   const prevIncomingCountRef = useRef(0);
+  const selectedConversationIdRef = useRef(null);
 
   const isAuthenticated = !!state.isAuthenticated && !!currentUser;
 
@@ -155,6 +157,9 @@ const ChatWidget = () => {
         } else if (barberIdFromEvent != null) {
           setSelectedBarberId(barberIdFromEvent);
           setSelectedAppointmentId(null);
+        } else {
+          setSelectedAppointmentId(null);
+          setSelectedBarberId(null);
         }
       } catch (e) {
         console.error('Error procesando evento open-chat-widget:', e);
@@ -214,6 +219,10 @@ const ChatWidget = () => {
   }, [conversationsForDisplay]);
 
   useEffect(() => {
+    selectedConversationIdRef.current = selectedConversationId;
+  }, [selectedConversationId]);
+
+  useEffect(() => {
     if (!currentUser?.id || !isAuthenticated) return;
 
     let cancelled = false;
@@ -222,11 +231,21 @@ const ChatWidget = () => {
         const list = await loadUserConversations(currentUser.id);
         if (!cancelled) {
           setConversations(list);
-          if (selectedConversationId == null) {
-            const displayList = buildDisplayConversations(list);
-            if (Array.isArray(displayList) && displayList.length > 0) {
-              setSelectedConversationId(displayList[0].id);
-            }
+          const displayList = buildDisplayConversations(list);
+          const desired = selectedConversationIdRef.current;
+          if (!Array.isArray(displayList) || displayList.length === 0) {
+            if (desired != null) setSelectedConversationId(null);
+            return;
+          }
+
+          if (desired == null) {
+            setSelectedConversationId(displayList[0].id);
+            return;
+          }
+
+          const stillExists = displayList.some((c) => c?.id === desired);
+          if (!stillExists) {
+            setSelectedConversationId(displayList[0].id);
           }
         }
       } catch (e) {
@@ -240,7 +259,7 @@ const ChatWidget = () => {
       cancelled = true;
       clearInterval(intervalId);
     };
-  }, [currentUser, isAuthenticated, selectedConversationId]);
+  }, [currentUser?.id, isAuthenticated]);
 
   const futureAppointmentsForUser = useMemo(() => {
     if (!currentUser) return null;
@@ -380,7 +399,14 @@ const ChatWidget = () => {
         if (cancelled) return;
         setMessages(msgs);
 
-        const incoming = msgs.filter((m) => (m.sender_id ?? m.senderId) !== currentUser.id).length;
+        const incoming = msgs.filter((m) => {
+          const senderId = m.sender_id ?? m.senderId;
+          if (senderId === currentUser.id) return false;
+          const isSystem = m.is_system || m.isSystem;
+          const relatedAction = String(m.related_action ?? m.relatedAction ?? '').toUpperCase();
+          if (isSystem && relatedAction === 'RETENTION_POLICY') return false;
+          return true;
+        }).length;
         prevIncomingCountRef.current = incoming;
         if (isOpen) {
           void markChatMessagesAsRead(selectedConversationId, currentUser.id);
@@ -418,7 +444,14 @@ const ChatWidget = () => {
           setMessages(latest);
 
           // Calcular mensajes entrantes (no míos)
-          const incoming = latest.filter((m) => (m.sender_id ?? m.senderId) !== currentUser.id).length;
+          const incoming = latest.filter((m) => {
+            const senderId = m.sender_id ?? m.senderId;
+            if (senderId === currentUser.id) return false;
+            const isSystem = m.is_system || m.isSystem;
+            const relatedAction = String(m.related_action ?? m.relatedAction ?? '').toUpperCase();
+            if (isSystem && relatedAction === 'RETENTION_POLICY') return false;
+            return true;
+          }).length;
           const prevIncoming = prevIncomingCountRef.current || 0;
 
           // Si hay más mensajes entrantes que antes, disparar toast global
@@ -789,12 +822,30 @@ const ChatWidget = () => {
           onClick={async () => {
             try {
               if (!selectedConversationId || !currentUser?.id) return;
-              const ok = window.confirm('¿Estás seguro de que deseas eliminar esta conversación?');
+              const partnerName = selectedConversation?.partner_name ?? selectedConversation?.partnerName;
+              const ok = window.confirm(
+                partnerName
+                  ? `¿Estás seguro de que deseas eliminar la conversación con ${partnerName}?`
+                  : '¿Estás seguro de que deseas eliminar esta conversación?'
+              );
               if (!ok) return;
-              await archiveConversation(selectedConversationId, currentUser.id);
-              const list = await loadUserConversations(currentUser.id);
-              setConversations(list);
-              const displayList = buildDisplayConversations(list);
+
+              const partnerId = selectedConversation?.partner_id ?? selectedConversation?.partnerId;
+              const list = Array.isArray(conversations) ? conversations : [];
+              const toArchive = partnerId == null
+                ? list.filter((c) => c?.id === selectedConversationId)
+                : list.filter((c) => String(c?.partner_id ?? c?.partnerId ?? '') === String(partnerId));
+
+              const uniqueIds = Array.from(new Set(toArchive.map((c) => c?.id).filter((id) => id != null)));
+              if (uniqueIds.length === 0) uniqueIds.push(selectedConversationId);
+
+              for (const id of uniqueIds) {
+                await archiveConversation(id, currentUser.id);
+              }
+
+              const refreshed = await loadUserConversations(currentUser.id);
+              setConversations(refreshed);
+              const displayList = buildDisplayConversations(refreshed);
               setSelectedConversationId(displayList?.[0]?.id ?? null);
             } catch (e) {
               console.error('Error eliminando conversación:', e);

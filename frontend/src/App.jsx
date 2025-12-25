@@ -9,6 +9,67 @@ import ChatWidget from './components/ChatWidget';
 import { setupImageUploadInterceptor } from './utils/imageUtils';
 import { saveStateToLocalStorage, loadInitialState, saveUser, saveBarberShop, saveService, saveAppointment, saveProduct, cancelAppointment, completeAppointment, markNoShowAppointment, deleteAppointmentsByClientAndStatus, loadNotificationsForUser, loadAppointments, loadProducts, loadUsers } from './services/dataService';
 import { userApi, barberShopApi, serviceApi, productApi, barberAvailabilityApi, barberBreaksApi, barberServicesApi } from './services/apiService';
+
+const SESSION_STORAGE_KEY = 'stylex_session_v1';
+
+const safeJsonParse = (raw) => {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
+
+const getNormalizedRole = (user) => String(user?.rol || user?.role || 'client').toLowerCase();
+
+const getDefaultViewForRole = (normalizedRole) => {
+  if (normalizedRole.includes('admin') || normalizedRole.includes('owner')) return 'ownerDashboard';
+  if (normalizedRole.includes('barber')) return 'barberDashboard';
+  return 'clientDashboard';
+};
+
+const loadSessionFromStorage = () => {
+  if (typeof window === 'undefined') return null;
+  const raw = window.localStorage?.getItem?.(SESSION_STORAGE_KEY);
+  if (!raw) return null;
+  const parsed = safeJsonParse(raw);
+  if (!parsed || typeof parsed !== 'object') return null;
+  return parsed;
+};
+
+const buildRestoredState = (baseState) => {
+  const session = loadSessionFromStorage();
+  if (!session) return baseState;
+
+  const currentUser = session.currentUser || null;
+  if (!currentUser) return baseState;
+
+  const role = getNormalizedRole(currentUser);
+  const defaultView = getDefaultViewForRole(role);
+
+  const allowOwner = role.includes('admin') || role.includes('owner');
+  const allowBarber = role.includes('barber') || currentUser?.shopId != null || currentUser?.shop_id != null;
+  const allowClient = role.includes('client') || (!allowOwner && !allowBarber);
+
+  const requestedView = typeof session.currentView === 'string' ? session.currentView : defaultView;
+  const resolvedView =
+    (requestedView === 'ownerDashboard' && allowOwner)
+      ? 'ownerDashboard'
+      : (requestedView === 'barberDashboard' && allowBarber)
+        ? 'barberDashboard'
+        : (requestedView === 'clientDashboard' && allowClient)
+          ? 'clientDashboard'
+          : defaultView;
+
+  return {
+    ...baseState,
+    isAuthenticated: true,
+    currentUser,
+    currentView: resolvedView,
+    currentSubView: typeof session.currentSubView === 'string' ? session.currentSubView : baseState.currentSubView,
+  };
+};
+
 // Estado inicial limpio - todos los datos vendrán de la API
 const initialState = {
   currentSubView: 'barberOverview',
@@ -38,6 +99,16 @@ function appReducer(state, action) {
     case 'SET_ALL_DATA': {
       const incoming = action.payload || {};
 
+      const {
+        currentUser: _incomingCurrentUser,
+        isAuthenticated: _incomingIsAuthenticated,
+        currentView: _incomingCurrentView,
+        currentSubView: _incomingCurrentSubView,
+        notification: _incomingNotification,
+        modal: _incomingModal,
+        ...restIncoming
+      } = incoming;
+
       // Si vienen citas nuevas desde el backend, fusionarlas con las existentes
       // para conservar campos locales como notesBarber.
       let mergedAppointments = incoming.appointments;
@@ -56,7 +127,7 @@ function appReducer(state, action) {
 
       return {
         ...state,
-        ...incoming,
+        ...restIncoming,
         ...(mergedAppointments ? { appointments: mergedAppointments } : {}),
       };
     }
@@ -114,10 +185,9 @@ function appReducer(state, action) {
       // Normalizar el rol a minúsculas para comparaciones flexibles
       const normalizedRole = userRole.toLowerCase();
       
-      if (normalizedRole.includes('client')) currentView = 'clientDashboard';
+      if (normalizedRole.includes('admin') || normalizedRole.includes('owner')) currentView = 'ownerDashboard';
       else if (normalizedRole.includes('barber')) currentView = 'barberDashboard';
-      else if (normalizedRole.includes('owner')) currentView = 'ownerDashboard';
-      else if (normalizedRole.includes('admin')) currentView = 'ownerDashboard'; // Los admin ven el dashboard de owner
+      else currentView = 'clientDashboard';
       
       console.log('LOGIN: Vista seleccionada:', currentView);
       
@@ -1018,7 +1088,9 @@ const createApiDispatch = (dispatch) => {
           const body = {
             ...rest,
             ...(rest.shopId !== undefined ? { shop_id: rest.shopId } : {}),
-            ...(rest.canDeleteHistory !== undefined ? { can_delete_history: rest.canDeleteHistory } : {})
+            ...(rest.canDeleteHistory !== undefined ? { can_delete_history: rest.canDeleteHistory } : {}),
+            ...(rest.whatsappLink !== undefined ? { whatsappLink: rest.whatsappLink } : {}),
+            ...(rest.whatsapp_link !== undefined ? { whatsapp_link: rest.whatsapp_link } : {})
           };
 
           await userApi.update(id, body);
@@ -1033,7 +1105,8 @@ const createApiDispatch = (dispatch) => {
           // data contiene name, email, phone, password?, photoUrl, shopId...
           const body = {
             ...data,
-            ...(data.shopId !== undefined ? { shop_id: data.shopId } : {})
+            ...(data.shopId !== undefined ? { shop_id: data.shopId } : {}),
+            ...(data.whatsappLink !== undefined ? { whatsappLink: data.whatsappLink } : {})
           };
 
           await userApi.update(id, body);
@@ -1052,6 +1125,7 @@ const createApiDispatch = (dispatch) => {
             name: action.payload.barber.name,
             email: action.payload.barber.email,
             phone: action.payload.barber.phone,
+            whatsappLink: action.payload.barber.whatsappLink,
             password: action.payload.barber.password,
             role: 'barber',
             photoUrl: action.payload.barber.photoUrl || undefined,
@@ -1135,13 +1209,31 @@ const App = () => {
   const latestUsersRef = useRef([]);
   
   // Inicializar con el estado predeterminado mientras se cargan los datos
-  const [state, dispatchBase] = useReducer(appReducer, initialState);
+  const [state, dispatchBase] = useReducer(appReducer, initialState, buildRestoredState);
   
   // Crear un dispatch que realiza operaciones en la API
   const dispatch = createApiDispatch(dispatchBase);
   
   // Guardar el estado en una variable global para compatibilidad
   window.appState = state;
+
+  useEffect(() => {
+    try {
+      if (state.isAuthenticated && state.currentUser) {
+        const snapshot = {
+          isAuthenticated: true,
+          currentUser: state.currentUser,
+          currentView: state.currentView,
+          currentSubView: state.currentSubView,
+        };
+        window.localStorage?.setItem?.(SESSION_STORAGE_KEY, JSON.stringify(snapshot));
+      } else {
+        window.localStorage?.removeItem?.(SESSION_STORAGE_KEY);
+      }
+    } catch (e) {
+      console.warn('No se pudo persistir la sesión en localStorage:', e?.message || e);
+    }
+  }, [state.isAuthenticated, state.currentUser, state.currentView, state.currentSubView]);
   
   // Cargar datos iniciales y configurar la aplicación
   useEffect(() => {
@@ -1199,6 +1291,9 @@ const App = () => {
           name: u.name || u.nombre,
           telefono: u.telefono || u.phone,
           phone: u.phone || u.telefono,
+          whatsappLink: u.whatsappLink !== undefined
+            ? u.whatsappLink
+            : (u.whatsapp_link !== undefined ? u.whatsapp_link : ''),
           canDeleteHistory: u.canDeleteHistory !== undefined
             ? u.canDeleteHistory
             : (u.can_delete_history !== undefined ? u.can_delete_history : false),

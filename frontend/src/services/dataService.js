@@ -52,6 +52,9 @@ export const loadInitialState = async () => {
       name: u.name || u.nombre,
       telefono: u.telefono || u.phone,
       phone: u.phone || u.telefono,
+      whatsappLink: u.whatsappLink !== undefined
+        ? u.whatsappLink
+        : (u.whatsapp_link !== undefined ? u.whatsapp_link : ''),
       // Permiso para borrar historial
       canDeleteHistory: u.canDeleteHistory !== undefined
         ? u.canDeleteHistory
@@ -73,6 +76,7 @@ export const loadInitialState = async () => {
         city: bs.city || schedule.city || '',
         sector: bs.sector || schedule.sector || '',
         phone: bs.phone || schedule.phone || '',
+        whatsappLink: bs.whatsappLink || schedule.whatsappLink || '',
         openHours: bs.openHours || schedule.openHours || '',
         description: bs.description || schedule.description || '',
         email: bs.email || schedule.email || '',
@@ -173,13 +177,6 @@ export const loadInitialState = async () => {
       barberServices,
       barberAvailability,
       barberBreaks,
-      // Mantener valores por defecto para el resto de propiedades
-      currentSubView: 'barberOverview',
-      currentUser: null,
-      isAuthenticated: false,
-      currentView: 'login',
-      notification: null,
-      modal: null,
     };
   } catch (error) {
     console.error('Error al cargar el estado inicial:', error);
