@@ -2,7 +2,6 @@ import React, { useContext, useState, useMemo, useRef, useEffect } from 'react';
 import { AppContext } from '../App';
 import ClientAppointments from './ClientAppointments';
 import ClientProductsView from './ClientProductsView';
-import ClientNotifications from './ClientNotifications';
 import Modal from './ui/Modal';
 import api from '../services/apiService';
 import { getOrCreateDirectConversation, sendChatMessage } from '../services/dataService';
@@ -21,6 +20,59 @@ const formatTimeTo12h = (time24) => {
   const hh = String(h12).padStart(2, '0');
   const mm = String(m).padStart(2, '0');
   return `${hh}:${mm} ${period}`;
+};
+
+const formatAvgRatingEs = (value) => {
+  const n = Number(value);
+  const safe = Number.isFinite(n) ? n : 0;
+  return safe.toLocaleString('es-DO', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+};
+
+const RatingStars = ({ value, idPrefix, sizeClass = 'w-4 h-4' }) => {
+  const raw = Number(value);
+  const clamped = Math.max(0, Math.min(5, Number.isFinite(raw) ? raw : 0));
+  const rounded = Math.round(clamped * 2) / 2;
+  const full = Math.floor(rounded);
+  const half = rounded - full === 0.5;
+
+  const starPath =
+    'M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.967a1 1 0 00.95.69h4.173c.969 0 1.371 1.24.588 1.81l-3.376 2.455a1 1 0 00-.364 1.118l1.287 3.966c.3.922-.755 1.688-1.54 1.118L10 14.347l-3.375 2.455c-.785.57-1.84-.196-1.54-1.118l1.287-3.966a1 1 0 00-.364-1.118L2.632 9.394c-.783-.57-.38-1.81.588-1.81h4.173a1 1 0 00.95-.69l1.286-3.967z';
+
+  return (
+    <div className="flex items-center gap-0.5" aria-label={`Rating: ${rounded} de 5`}>
+      {Array.from({ length: 5 }).map((_, idx) => {
+        const n = idx + 1;
+        const isFull = n <= full;
+        const isHalf = !isFull && half && n === full + 1;
+        const gradId = `${idPrefix}-star-${n}`;
+
+        if (isHalf) {
+          return (
+            <svg key={gradId} viewBox="0 0 20 20" className={sizeClass} aria-hidden="true">
+              <defs>
+                <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="50%" stopColor="#f59e0b" />
+                  <stop offset="50%" stopColor="#d1d5db" />
+                </linearGradient>
+              </defs>
+              <path d={starPath} fill={`url(#${gradId})`} />
+            </svg>
+          );
+        }
+
+        return (
+          <svg
+            key={gradId}
+            viewBox="0 0 20 20"
+            className={`${sizeClass} ${isFull ? 'text-amber-500' : 'text-slate-300'}`}
+            aria-hidden="true"
+          >
+            <path d={starPath} fill="currentColor" />
+          </svg>
+        );
+      })}
+    </div>
+  );
 };
 
 // Helpers del original
@@ -46,6 +98,9 @@ const ClientDashboard = () => {
   const [search, setSearch] = useState('');
   const [selectedShop, setSelectedShop] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [showReviewsModal, setShowReviewsModal] = useState(false);
+  const [reviewsShop, setReviewsShop] = useState(null);
+  const [reviewsModalShowLeaveReview, setReviewsModalShowLeaveReview] = useState(false);
   const [selectedService, setSelectedService] = useState(null);
   const [selectedBarber, setSelectedBarber] = useState(null);
   const [selectedDate, setSelectedDate] = useState('');
@@ -53,6 +108,23 @@ const ClientDashboard = () => {
   const [bookingLoading, setBookingLoading] = useState(false);
   const [activeView, setActiveView] = useState('shops'); // 'shops', 'appointments', 'products'
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [profileName, setProfileName] = useState('');
+  const [profilePhone, setProfilePhone] = useState('');
+  const [profilePhotoUrl, setProfilePhotoUrl] = useState('');
+  const [profileCurrentPassword, setProfileCurrentPassword] = useState('');
+  const [profileError, setProfileError] = useState('');
+  const [profileSuccess, setProfileSuccess] = useState('');
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [pwdCurrent, setPwdCurrent] = useState('');
+  const [pwdNext, setPwdNext] = useState('');
+  const [pwdConfirm, setPwdConfirm] = useState('');
+  const [pwdSaving, setPwdSaving] = useState(false);
+  const [shopReviews, setShopReviews] = useState([]);
+  const [shopReviewsLoading, setShopReviewsLoading] = useState(false);
+  const [reviewAppointmentId, setReviewAppointmentId] = useState('');
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
   // Estado para compra de productos
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [purchaseShop, setPurchaseShop] = useState(null);
@@ -81,7 +153,6 @@ const ClientDashboard = () => {
     return shops.find(s => String(s?.id) === String(productShopId)) || null;
   }, [purchaseShop, selectedProduct, state.barberShops]);
   const [nowTick, setNowTick] = useState(0);
-  const [chatUnreadCount, setChatUnreadCount] = useState(0);
   
   // Referencias para controlar el ciclo de vida del componente
   const isMounted = useRef(true);
@@ -89,27 +160,102 @@ const ClientDashboard = () => {
   useEffect(() => {
     // Establecer la referencia de montaje al inicio
     isMounted.current = true;
-    
-    // Escuchar cambios de no leídos del chat
-    const onUnread = (ev) => {
-      const count = ev?.detail?.count ?? 0;
-      setChatUnreadCount(typeof count === 'number' ? count : 0);
-    };
-    window.addEventListener('chat-unread-changed', onUnread);
 
     // Limpieza al desmontar
     return () => {
       isMounted.current = false;
-      window.removeEventListener('chat-unread-changed', onUnread);
     };
   }, []);
 
-  const handleOpenChatFromHeader = () => {
-    try {
-      window.dispatchEvent(new Event('open-chat-widget'));
-    } catch (e) {
-      console.error('No se pudo abrir el chat desde el header:', e);
-    }
+  useEffect(() => {
+    if (activeView !== 'profile') return;
+    const u = state?.currentUser;
+    if (!u) return;
+    setProfileName(String(u?.name || u?.nombre || '').trim());
+    setProfilePhone(String(u?.phone || u?.telefono || '').trim());
+    setProfilePhotoUrl(String(u?.photoUrl || u?.photo_url || '').trim());
+    setProfileError('');
+    setProfileSuccess('');
+  }, [activeView, state?.currentUser]);
+
+  useEffect(() => {
+    if (!showReviewsModal || !reviewsShop?.id) return;
+
+    let cancelled = false;
+    const load = async () => {
+      setShopReviewsLoading(true);
+      try {
+        const res = await api.barberShops.getReviews(reviewsShop.id);
+        if (cancelled) return;
+        setShopReviews(Array.isArray(res) ? res : []);
+      } catch (e) {
+        if (cancelled) return;
+        setShopReviews([]);
+      } finally {
+        if (!cancelled) setShopReviewsLoading(false);
+      }
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [showReviewsModal, reviewsShop?.id]);
+
+  useEffect(() => {
+    const handler = (event) => {
+      const shopId = event?.detail?.shopId;
+      const appointmentId = event?.detail?.appointmentId;
+      if (shopId == null) return;
+
+      const shops = Array.isArray(state.barberShops) ? state.barberShops : [];
+      const shop = shops.find((s) => String(s?.id) === String(shopId)) || null;
+      if (!shop) return;
+
+      setReviewsShop(shop);
+      setShowReviewsModal(true);
+      setReviewsModalShowLeaveReview(true);
+      setReviewComment('');
+      setReviewRating(5);
+      setReviewAppointmentId(appointmentId != null ? String(appointmentId) : '');
+    };
+
+    window.addEventListener('open-reviews-modal', handler);
+    return () => {
+      window.removeEventListener('open-reviews-modal', handler);
+    };
+  }, [state.barberShops]);
+
+  const getEligibleAppointmentsForShop = (shopId) => {
+    const userId = state?.currentUser?.id;
+    if (!userId || shopId == null) return [];
+    return (Array.isArray(state.appointments) ? state.appointments : []).filter((a) => {
+      const sameClient = (a.clientId ?? a.client_id) != null && String(a.clientId ?? a.client_id) === String(userId);
+      const sameShop = (a.shopId ?? a.shop_id) != null && String(a.shopId ?? a.shop_id) === String(shopId);
+      const status = String(a.status || '').toLowerCase();
+      const isCompleted = status === 'completed' || status === 'completada' || status === 'completado' || status.startsWith('complet');
+      const reviewed = a.clientReviewed !== undefined ? a.clientReviewed : (a.client_reviewed !== undefined ? a.client_reviewed : false);
+      return sameClient && sameShop && isCompleted && !reviewed;
+    });
+  };
+
+  const handleOpenReviewsModal = (shop, opts = {}) => {
+    if (!shop?.id) return;
+    setReviewsShop(shop);
+    setShowReviewsModal(true);
+    setReviewsModalShowLeaveReview(!!opts.openLeaveReview);
+    setReviewComment('');
+    setReviewRating(5);
+    setReviewAppointmentId(opts.appointmentId != null ? String(opts.appointmentId) : '');
+  };
+
+  const handleCloseReviewsModal = () => {
+    setShowReviewsModal(false);
+    setReviewsShop(null);
+    setReviewsModalShowLeaveReview(false);
+    setReviewAppointmentId('');
+    setReviewComment('');
+    setReviewRating(5);
   };
 
   const openUrlInNewTab = (url) => {
@@ -322,7 +468,7 @@ const ClientDashboard = () => {
     return () => clearInterval(id);
   }, [showModal]);
 
-  // Polling local de citas mientras el modal de reserva esté abierto
+  // Polling local de citas mientras el modal de reserva esté abierto,
   // para que otras pestañas/clientes vean las horas bloqueadas casi en tiempo real.
   useEffect(() => {
     if (!showModal) return; // solo cuando el modal está abierto
@@ -1215,6 +1361,10 @@ const ClientDashboard = () => {
     
     setActiveView(view);
     setIsMobileMenuOpen(false);
+    if (view !== 'profile') {
+      setProfileError('');
+      setProfileSuccess('');
+    }
     
     // Si estamos cambiando de vista, limpiar la búsqueda
     if (view === 'shops') {
@@ -1232,8 +1382,277 @@ const ClientDashboard = () => {
     );
   } else if (activeView === 'products') {
     return <ClientProductsView onBack={() => handleChangeView('shops')} />;
-  } else if (activeView === 'notifications') {
-    return <ClientNotifications onBack={() => handleChangeView('shops')} />;
+  } else if (activeView === 'profile') {
+    const currentUserId = state?.currentUser?.id;
+    const photo = profilePhotoUrl ||
+      (state?.currentUser?.photoUrl || state?.currentUser?.photo_url) ||
+      'https://ui-avatars.com/api/?name=' + encodeURIComponent(profileName || 'Cliente') + '&background=4f46e5&color=fff&size=256';
+
+    const handleUploadProfilePhoto = async (file) => {
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const res = await fetch('/api/upload/profile', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.url) {
+        throw new Error(data?.error || 'Error al subir la imagen');
+      }
+      setProfilePhotoUrl(data.url);
+      return data.url;
+    };
+
+    const handleSaveProfile = async () => {
+      if (!currentUserId) return;
+
+      const nextName = String(profileName || '').trim();
+      const nextPhone = String(profilePhone || '').trim();
+      const nextPhoto = String(profilePhotoUrl || '').trim();
+
+      setProfileError('');
+      setProfileSuccess('');
+
+      if (!nextName) {
+        setProfileError('El nombre es requerido.');
+        return;
+      }
+
+      if (!String(profileCurrentPassword || '').trim()) {
+        setProfileError('Debes ingresar tu contraseña actual para guardar.');
+        return;
+      }
+
+      setProfileSaving(true);
+      try {
+        const updated = await api.users.updateProfile(currentUserId, {
+          name: nextName,
+          phone: nextPhone,
+          photoUrl: nextPhoto || null,
+          currentPassword: profileCurrentPassword,
+        });
+
+        dispatch({
+          type: 'UPDATE_USER_STATE',
+          payload: {
+            id: currentUserId,
+            name: updated?.name || nextName,
+            nombre: updated?.name || nextName,
+            phone: updated?.phone || nextPhone,
+            telefono: updated?.phone || nextPhone,
+            photoUrl: updated?.photo_url || updated?.photoUrl || nextPhoto,
+            photo_url: updated?.photo_url || updated?.photoUrl || nextPhoto,
+          },
+        });
+
+        setProfileCurrentPassword('');
+        setProfileSuccess('Perfil actualizado.');
+      } catch (e) {
+        if (e?.status === 401) {
+          setProfileError('Contraseña actual incorrecta.');
+        } else {
+          setProfileError(e?.message || 'Error al actualizar perfil.');
+        }
+      } finally {
+        setProfileSaving(false);
+      }
+    };
+
+    const handleChangePassword = async () => {
+      if (!currentUserId) return;
+
+      const cur = String(pwdCurrent || '').trim();
+      const next = String(pwdNext || '').trim();
+      const confirm = String(pwdConfirm || '').trim();
+
+      if (!cur || !next) {
+        dispatch({ type: 'SHOW_NOTIFICATION', payload: { message: 'Completa contraseña actual y nueva.', type: 'error' } });
+        return;
+      }
+
+      if (next !== confirm) {
+        dispatch({ type: 'SHOW_NOTIFICATION', payload: { message: 'Las contraseñas no coinciden.', type: 'error' } });
+        return;
+      }
+
+      setPwdSaving(true);
+      try {
+        await api.users.changePassword(currentUserId, {
+          currentPassword: cur,
+          newPassword: next,
+        });
+        setPwdCurrent('');
+        setPwdNext('');
+        setPwdConfirm('');
+        dispatch({ type: 'SHOW_NOTIFICATION', payload: { message: 'Contraseña actualizada.', type: 'success' } });
+      } catch (e) {
+        dispatch({ type: 'SHOW_NOTIFICATION', payload: { message: e?.message || 'Error al cambiar contraseña.', type: 'error' } });
+      } finally {
+        setPwdSaving(false);
+      }
+    };
+
+    return (
+      <div className="min-h-screen bg-slate-100 p-6">
+        <div className="max-w-3xl mx-auto">
+          <div className="flex items-center justify-between mb-6">
+            <h1 className="text-3xl font-bold text-slate-800">Mi Perfil</h1>
+            <button
+              type="button"
+              className="px-4 py-2 rounded-lg shadow-md bg-white text-slate-700 hover:bg-slate-100"
+              onClick={() => handleChangeView('shops')}
+            >
+              Volver
+            </button>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <div className="flex flex-col sm:flex-row gap-6 items-center">
+              <div className="relative w-28 h-28">
+                <img
+                  src={photo}
+                  alt="Foto de perfil"
+                  className="w-28 h-28 rounded-full border-4 border-indigo-200 shadow-md object-cover"
+                />
+                <label className="absolute bottom-1 right-1 bg-white rounded-full p-2 shadow cursor-pointer hover:bg-indigo-50 transition-colors">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        await handleUploadProfilePhoto(file);
+                        dispatch({ type: 'SHOW_NOTIFICATION', payload: { message: 'Imagen subida. No olvides guardar.', type: 'info' } });
+                      } catch (err) {
+                        dispatch({ type: 'SHOW_NOTIFICATION', payload: { message: err?.message || 'Error al subir imagen.', type: 'error' } });
+                      }
+                    }}
+                  />
+                  <i className="fas fa-camera text-indigo-600"></i>
+                </label>
+              </div>
+
+              <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-slate-200 shadow-sm cursor-pointer hover:bg-slate-50 text-sm font-semibold text-slate-700">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      await handleUploadProfilePhoto(file);
+                      dispatch({ type: 'SHOW_NOTIFICATION', payload: { message: 'Imagen subida. No olvides guardar.', type: 'info' } });
+                    } catch (err) {
+                      dispatch({ type: 'SHOW_NOTIFICATION', payload: { message: err?.message || 'Error al subir imagen.', type: 'error' } });
+                    }
+                  }}
+                />
+                <i className="fas fa-upload"></i>
+                <span>Subir foto</span>
+              </label>
+
+              <div className="flex-1 w-full">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Nombre</label>
+                    <input
+                      type="text"
+                      value={profileName}
+                      onChange={(e) => setProfileName(e.target.value)}
+                      className="w-full p-2.5 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Teléfono</label>
+                    <input
+                      type="tel"
+                      value={profilePhone}
+                      onChange={(e) => setProfilePhone(e.target.value)}
+                      className="w-full p-2.5 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Contraseña actual (para guardar cambios)</label>
+                  <input
+                    type="password"
+                    value={profileCurrentPassword}
+                    onChange={(e) => setProfileCurrentPassword(e.target.value)}
+                    className="w-full p-2.5 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                  {profileError && (
+                    <div className="mt-2 text-sm text-red-600">{profileError}</div>
+                  )}
+                  {!profileError && profileSuccess && (
+                    <div className="mt-2 text-sm text-emerald-700">{profileSuccess}</div>
+                  )}
+                </div>
+
+                <div className="mt-4 flex justify-end">
+                  <button
+                    type="button"
+                    disabled={profileSaving}
+                    onClick={handleSaveProfile}
+                    className="px-4 py-2 rounded-lg shadow-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-60"
+                  >
+                    Guardar Perfil
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-lg p-6">
+            <h2 className="text-xl font-semibold text-slate-800 mb-4">Cambiar Contraseña</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Contraseña actual</label>
+                <input
+                  type="password"
+                  value={pwdCurrent}
+                  onChange={(e) => setPwdCurrent(e.target.value)}
+                  className="w-full p-2.5 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Nueva contraseña</label>
+                <input
+                  type="password"
+                  value={pwdNext}
+                  onChange={(e) => setPwdNext(e.target.value)}
+                  className="w-full p-2.5 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Confirmar nueva contraseña</label>
+                <input
+                  type="password"
+                  value={pwdConfirm}
+                  onChange={(e) => setPwdConfirm(e.target.value)}
+                  className="w-full p-2.5 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                disabled={pwdSaving}
+                onClick={handleChangePassword}
+                className="px-4 py-2 rounded-lg shadow-md bg-slate-900 hover:bg-slate-800 text-white disabled:opacity-60"
+              >
+                Cambiar Contraseña
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -1313,28 +1732,12 @@ const ClientDashboard = () => {
             Productos
           </button>
           <button
-            type="button"
-            onClick={() => {
-              setIsMobileMenuOpen(false);
-              handleOpenChatFromHeader();
-            }}
-            className="px-4 py-2 rounded-lg shadow-md flex items-center justify-start bg-white text-slate-700 hover:bg-slate-100 relative"
-          >
-            <i className="fas fa-comments mr-2"></i>
-            Mensajes
-            {chatUnreadCount > 0 && (
-              <span className="ml-2 inline-flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 min-w-[18px] h-[18px]">
-                {chatUnreadCount}
-              </span>
-            )}
-          </button>
-          <button
-            className={`px-4 py-2 rounded-lg shadow-md flex items-center justify-start ${activeView === 'notifications' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}
-            onClick={() => handleChangeView('notifications')}
+            className={`px-4 py-2 rounded-lg shadow-md flex items-center justify-start ${activeView === 'profile' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}
+            onClick={() => handleChangeView('profile')}
             type="button"
           >
-            <i className="fas fa-bell mr-2"></i>
-            Notificaciones
+            <i className="fas fa-user mr-2"></i>
+            Mi Perfil
           </button>
           <button
             onClick={() => {
@@ -1375,26 +1778,13 @@ const ClientDashboard = () => {
               <i className="fas fa-shopping-bag mr-2"></i>
               Productos
             </button>
-            <button
-              type="button"
-              onClick={handleOpenChatFromHeader}
-              className="px-3 py-2 rounded-lg shadow-md flex items-center bg-white text-slate-700 hover:bg-slate-100 relative"
-            >
-              <i className="fas fa-comments mr-2"></i>
-              Mensajes
-              {chatUnreadCount > 0 && (
-                <span className="ml-2 inline-flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 min-w-[18px] h-[18px]">
-                  {chatUnreadCount}
-                </span>
-              )}
-            </button>
             <button 
-              className={`px-4 py-2 rounded-lg shadow-md flex items-center ${activeView === 'notifications' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}
-              onClick={() => handleChangeView('notifications')}
+              className={`px-4 py-2 rounded-lg shadow-md flex items-center ${activeView === 'profile' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}
+              onClick={() => handleChangeView('profile')}
               type="button"
             >
-              <i className="fas fa-bell mr-2"></i>
-              Notificaciones
+              <i className="fas fa-user mr-2"></i>
+              Mi Perfil
             </button>
             <button
               onClick={() => dispatch({ type: 'LOGOUT' })}
@@ -1474,14 +1864,36 @@ const ClientDashboard = () => {
                     <span>{shop.phone}</span>
                   </button>
                 </div>
-                <div className="flex items-center gap-1 text-yellow-400 text-base mb-1">
-                  <i className="fa-solid fa-star"></i>
-                  <i className="fa-solid fa-star"></i>
-                  <i className="fa-solid fa-star"></i>
-                  <i className="fa-solid fa-star"></i>
-                  <i className="fa-solid fa-star-half-alt"></i>
-                  <span className="text-slate-500 text-xs ml-1">(4.8 de 2 reseñas)</span>
-                </div>
+                {(() => {
+                  const rating = Number(shop?.rating ?? 0) || 0;
+                  const reviewCount = Number(shop?.reviewCount ?? shop?.review_count ?? 0) || 0;
+                  const reviewsLabel = reviewCount === 1 ? '1 reseña' : `${reviewCount} reseñas`;
+                  const eligibleCount = getEligibleAppointmentsForShop(shop.id).length;
+                  return (
+                    <div className="flex items-center justify-between gap-3 mb-1 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenReviewsModal(shop)}
+                        className="flex items-center gap-2 hover:underline"
+                        title="Ver reseñas"
+                      >
+                        <span className="text-sm font-semibold text-slate-700">{formatAvgRatingEs(rating)}</span>
+                        <RatingStars value={rating} idPrefix={`shop-${shop.id}`} sizeClass="w-4 h-4" />
+                        <span className="text-xs text-slate-500">({reviewsLabel})</span>
+                      </button>
+                      {eligibleCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenReviewsModal(shop, { openLeaveReview: true })}
+                          className="text-xs font-semibold text-indigo-700 hover:underline"
+                          title="Dejar tu reseña"
+                        >
+                          Dejar tu reseña
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
               <button
                 className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 rounded-lg mt-2 shadow-sm text-sm"
@@ -1566,6 +1978,43 @@ const ClientDashboard = () => {
                 </ul>
               </div>
             </div>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+              {(() => {
+                const rating = Number(selectedShop?.rating ?? 0) || 0;
+                const reviewCount = Number(selectedShop?.reviewCount ?? selectedShop?.review_count ?? 0) || 0;
+                const reviewsLabel = reviewCount === 1 ? '1 reseña' : `${reviewCount} reseñas`;
+                const eligibleCount = getEligibleAppointmentsForShop(selectedShop?.id).length;
+                return (
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-800">Reseñas</div>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenReviewsModal(selectedShop)}
+                        className="flex items-center gap-2 mt-1 hover:underline"
+                        title="Ver reseñas"
+                      >
+                        <span className="text-sm font-semibold text-slate-700">{formatAvgRatingEs(rating)}</span>
+                        <RatingStars value={rating} idPrefix={`shop-modal-${selectedShop?.id ?? 'x'}`} sizeClass="w-4 h-4" />
+                        <span className="text-xs text-slate-500">({reviewsLabel})</span>
+                        <span className="text-xs text-indigo-700 font-semibold">Ver reseñas</span>
+                      </button>
+                    </div>
+                    {eligibleCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenReviewsModal(selectedShop, { openLeaveReview: true })}
+                        className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold"
+                      >
+                        Dejar tu reseña
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+
             <div>
               <h3 className="text-lg font-bold text-indigo-700 mb-2">Selecciona Barbero</h3>
               {barbersForCurrentSelection.length === 0 ? (
@@ -1865,6 +2314,283 @@ const ClientDashboard = () => {
                 {purchaseLoading ? 'Procesando...' : 'Confirmar compra'}
               </button>
             </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={showReviewsModal}
+        onClose={handleCloseReviewsModal}
+        title={reviewsShop ? `Reseñas · ${reviewsShop.name}` : 'Reseñas'}
+        size="lg"
+      >
+        {reviewsShop && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              {(() => {
+                const rating = Number(reviewsShop?.rating ?? 0) || 0;
+                const reviewCount = Number(reviewsShop?.reviewCount ?? reviewsShop?.review_count ?? 0) || 0;
+                const reviewsLabel = reviewCount === 1 ? '1 reseña' : `${reviewCount} reseñas`;
+                const eligible = getEligibleAppointmentsForShop(reviewsShop?.id);
+                return (
+                  <>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-slate-700">{formatAvgRatingEs(rating)}</span>
+                        <RatingStars value={rating} idPrefix={`reviews-modal-${reviewsShop?.id ?? 'x'}`} sizeClass="w-4 h-4" />
+                        <span className="text-xs text-slate-500">({reviewsLabel})</span>
+                      </div>
+                      <div className="text-xs text-slate-500 mt-1">
+                        Aquí puedes ver todas las reseñas de esta barbería.
+                      </div>
+                    </div>
+                    {eligible.length > 0 && !reviewsModalShowLeaveReview && (
+                      <button
+                        type="button"
+                        onClick={() => setReviewsModalShowLeaveReview(true)}
+                        className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold"
+                      >
+                        Dejar tu reseña
+                      </button>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+
+            <div>
+              {shopReviewsLoading ? (
+                <div className="text-sm text-slate-500">Cargando reseñas...</div>
+              ) : shopReviews.length === 0 ? (
+                <div className="text-sm text-slate-500">Aún no hay reseñas.</div>
+              ) : (
+                <div className="space-y-3">
+                  {shopReviews.map((r) => {
+                    const name = r?.user_name || 'Cliente';
+                    const avatar =
+                      r?.user_photo_url ||
+                      r?.photo_url ||
+                      'https://ui-avatars.com/api/?name=' +
+                        encodeURIComponent(name) +
+                        '&background=0f172a&color=fff&size=128';
+                    const createdAt = r?.created_at ? new Date(r.created_at) : null;
+                    const dateText =
+                      createdAt && !Number.isNaN(createdAt.getTime())
+                        ? createdAt.toLocaleDateString('es-DO', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                          })
+                        : '';
+                    const rr = Number(r?.rating ?? 0) || 0;
+                    return (
+                      <div
+                        key={r?.id ?? `${r?.user_id}-${r?.created_at}`}
+                        className="bg-white border border-slate-200 rounded-lg p-3"
+                      >
+                        <div className="flex items-start gap-3">
+                          <img
+                            src={avatar}
+                            alt={name}
+                            className="w-9 h-9 rounded-full object-cover border"
+                          />
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="text-sm font-semibold text-slate-800">{name}</div>
+                              <div className="text-[11px] text-slate-500">{dateText}</div>
+                            </div>
+                            <div className="flex items-center gap-1 text-yellow-400 text-xs mt-1">
+                              {Array.from({ length: 5 }).map((_, idx) => {
+                                const v = idx + 1;
+                                const full = rr >= v;
+                                const icon = full ? 'fa-star' : 'fa-star';
+                                const cls = full ? 'fa-solid' : 'fa-regular';
+                                return <i key={idx} className={`${cls} ${icon}`}></i>;
+                              })}
+                            </div>
+                            {r?.comment && (
+                              <div className="text-sm text-slate-700 mt-2 whitespace-pre-wrap">
+                                {r.comment}
+                              </div>
+                            )}
+                            {r?.photo_url && (
+                              <div className="mt-2">
+                                <img
+                                  src={r.photo_url}
+                                  alt="Foto reseña"
+                                  className="w-full max-w-sm rounded-lg border object-cover"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {(() => {
+              const userId = state?.currentUser?.id;
+              const shopId = reviewsShop?.id;
+              const eligible = getEligibleAppointmentsForShop(shopId);
+
+              if (!reviewsModalShowLeaveReview) return null;
+
+              if (eligible.length === 0) {
+                return (
+                  <div className="text-xs text-slate-500">
+                    Para dejar una reseña necesitas tener una cita completada en esta barbería.
+                  </div>
+                );
+              }
+
+              const submit = async () => {
+                if (!userId || !shopId) return;
+                const apptId = Number(reviewAppointmentId || eligible[0]?.id);
+                if (!Number.isFinite(apptId)) {
+                  dispatch({
+                    type: 'SHOW_NOTIFICATION',
+                    payload: { message: 'Selecciona una cita válida para reseñar.', type: 'error' },
+                  });
+                  return;
+                }
+
+                setReviewSubmitting(true);
+                try {
+                  const resp = await api.barberShops.addReview(shopId, {
+                    userId,
+                    appointmentId: apptId,
+                    rating: reviewRating,
+                    comment: reviewComment,
+                    photoUrl: state?.currentUser?.photoUrl || state?.currentUser?.photo_url || null,
+                  });
+
+                  const nextRating = Number(resp?.rating ?? reviewsShop?.rating ?? 0) || 0;
+                  const nextCount = Number(resp?.reviewCount ?? reviewsShop?.reviewCount ?? reviewsShop?.review_count ?? 0) || 0;
+
+                  dispatch({
+                    type: 'UPDATE_BARBERSHOP_STATE',
+                    payload: { id: shopId, rating: nextRating, reviewCount: nextCount, review_count: nextCount },
+                  });
+
+                  setReviewsShop((prev) =>
+                    prev ? { ...prev, rating: nextRating, reviewCount: nextCount, review_count: nextCount } : prev
+                  );
+                  setSelectedShop((prev) =>
+                    prev && String(prev?.id) === String(shopId)
+                      ? { ...prev, rating: nextRating, reviewCount: nextCount, review_count: nextCount }
+                      : prev
+                  );
+
+                  const appts = Array.isArray(state.appointments) ? state.appointments : [];
+                  const existingAppt = appts.find((a) => String(a?.id) === String(apptId)) || null;
+                  dispatch({
+                    type: 'UPDATE_APPOINTMENT',
+                    payload: {
+                      ...(existingAppt || { id: apptId }),
+                      id: apptId,
+                      clientReviewed: true,
+                      client_reviewed: true,
+                    },
+                  });
+
+                  setReviewComment('');
+                  setReviewAppointmentId('');
+                  setReviewsModalShowLeaveReview(false);
+
+                  dispatch({
+                    type: 'SHOW_NOTIFICATION',
+                    payload: { message: 'Reseña enviada.', type: 'success' },
+                  });
+
+                  setShopReviewsLoading(true);
+                  try {
+                    const refreshed = await api.barberShops.getReviews(shopId);
+                    setShopReviews(Array.isArray(refreshed) ? refreshed : []);
+                  } finally {
+                    setShopReviewsLoading(false);
+                  }
+                } catch (e) {
+                  dispatch({
+                    type: 'SHOW_NOTIFICATION',
+                    payload: { message: e?.message || 'Error al enviar reseña.', type: 'error' },
+                  });
+                } finally {
+                  setReviewSubmitting(false);
+                }
+              };
+
+              return (
+                <div className="border-t border-slate-200 pt-4">
+                  <div className="text-sm font-semibold text-slate-800 mb-2">Dejar una reseña</div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Cita</label>
+                      <select
+                        className="w-full border border-slate-300 rounded-md p-2 text-sm"
+                        value={reviewAppointmentId}
+                        onChange={(e) => setReviewAppointmentId(e.target.value)}
+                      >
+                        <option value="">Selecciona una cita</option>
+                        {eligible.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            #{a.id} ·
+                            {(() => {
+                              const dt = a.startTime ? new Date(a.startTime) : null;
+                              if (!dt || Number.isNaN(dt.getTime())) return ' Fecha';
+                              return ` ${dt.toLocaleDateString('es-DO', { year: 'numeric', month: '2-digit', day: '2-digit' })}`;
+                            })()}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Rating</label>
+                      <select
+                        className="w-full border border-slate-300 rounded-md p-2 text-sm"
+                        value={reviewRating}
+                        onChange={(e) => setReviewRating(Number(e.target.value))}
+                      >
+                        {[5, 4, 3, 2, 1].map((v) => (
+                          <option key={v} value={v}>
+                            {v} estrellas
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Comentario (opcional)</label>
+                    <textarea
+                      className="w-full border border-slate-300 rounded-md p-2 text-sm"
+                      rows={3}
+                      value={reviewComment}
+                      onChange={(e) => setReviewComment(e.target.value)}
+                      placeholder="Cuéntanos tu experiencia"
+                    />
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
+                    <button
+                      type="button"
+                      disabled={reviewSubmitting}
+                      onClick={submit}
+                      className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold disabled:opacity-60"
+                    >
+                      {reviewSubmitting ? 'Enviando...' : 'Enviar reseña'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReviewsModalShowLeaveReview(false)}
+                      className="px-4 py-2 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm font-semibold"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
       </Modal>

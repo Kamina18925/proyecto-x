@@ -388,6 +388,16 @@ function appReducer(state, action) {
           shop.id === action.payload.id ? action.payload : shop
         )
       };
+
+    case 'UPDATE_BARBERSHOP_STATE':
+      return {
+        ...state,
+        barberShops: state.barberShops.map(shop =>
+          String(shop.id) === String(action.payload.id)
+            ? { ...shop, ...action.payload }
+            : shop
+        )
+      };
       
     case 'DELETE_BARBERSHOP':
       return {
@@ -533,6 +543,20 @@ function appReducer(state, action) {
         ...state,
         users: state.users.map(user => 
           String(user.id) === String(action.payload.id) 
+            ? { ...user, ...action.payload }
+            : user
+        ),
+        currentUser:
+          state.currentUser && String(state.currentUser.id) === String(action.payload.id)
+            ? { ...state.currentUser, ...action.payload }
+            : state.currentUser
+      };
+
+    case 'UPDATE_USER_STATE':
+      return {
+        ...state,
+        users: state.users.map(user =>
+          String(user.id) === String(action.payload.id)
             ? { ...user, ...action.payload }
             : user
         ),
@@ -895,6 +919,11 @@ const createApiDispatch = (dispatch) => {
           
         case 'ADD_APPOINTMENT':
         case 'UPDATE_APPOINTMENT': {
+          if (action?.meta?.skipApi) {
+            dispatch(action);
+            break;
+          }
+
           // Guardar la cita en la BD
           const appointmentData = action.payload;
           const savedAppointment = await saveAppointment(appointmentData);
@@ -1213,6 +1242,9 @@ const App = () => {
   
   // Crear un dispatch que realiza operaciones en la API
   const dispatch = createApiDispatch(dispatchBase);
+
+  const currentRoleRaw = state.currentUser?.role || state.currentUser?.rol || '';
+  const isClientRole = String(currentRoleRaw).toLowerCase().includes('client');
   
   // Guardar el estado en una variable global para compatibilidad
   window.appState = state;
@@ -1240,8 +1272,14 @@ const App = () => {
     const initializeApp = async () => {
       try {
         // Configurar el interceptor para simular la carga de imágenes
-        setupImageUploadInterceptor();
-        console.log('Interceptor de carga de imágenes configurado');
+        if (
+          typeof import.meta !== 'undefined' &&
+          import.meta.env &&
+          String(import.meta.env.VITE_USE_UPLOAD_INTERCEPTOR || '').toLowerCase() === 'true'
+        ) {
+          setupImageUploadInterceptor();
+          console.log('Interceptor de carga de imágenes configurado');
+        }
         
         // Cargar datos desde la API (primer carga)
         console.log('Cargando datos desde la API...');
@@ -1478,7 +1516,7 @@ const App = () => {
 
   // POLLING global de notificaciones para el usuario logueado (sonido + toast)
   useEffect(() => {
-    if (!state.isAuthenticated || !state.currentUser?.id) return undefined;
+    if (!state.isAuthenticated || !state.currentUser?.id || isClientRole) return undefined;
 
     let cancelled = false;
     const userId = state.currentUser.id;
@@ -1579,12 +1617,12 @@ const App = () => {
       </div>
     );
   }
-  
+
   return (
     <AppContext.Provider value={{ state, dispatch }}>
       <ErrorBoundary>
         <div className="min-h-screen bg-slate-100">
-          {state.notification && <Notification message={state.notification.message} type={state.notification.type} id={state.notification.id} />}
+          {state.notification && !isClientRole && <Notification message={state.notification.message} type={state.notification.type} id={state.notification.id} />}
           {state.modal && (
             <Modal
               title={state.modal.props?.title}

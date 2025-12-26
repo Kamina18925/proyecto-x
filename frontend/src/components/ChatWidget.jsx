@@ -97,6 +97,9 @@ const buildDisplayConversations = (rawList) => {
 const ChatWidget = () => {
   const { state, dispatch } = useContext(AppContext);
   const currentUser = state.currentUser;
+
+  const currentRoleRaw = currentUser?.role || currentUser?.rol || '';
+  const isClientRole = String(currentRoleRaw).toLowerCase().includes('client');
   const [isOpen, setIsOpen] = useState(false);
   const [conversationId, setConversationId] = useState(null);
   const [conversations, setConversations] = useState([]);
@@ -458,16 +461,18 @@ const ChatWidget = () => {
           if (incoming > prevIncoming) {
             prevIncomingCountRef.current = incoming;
 
-            try {
-              dispatch({
-                type: 'SHOW_NOTIFICATION',
-                payload: {
-                  message: 'Tienes un nuevo mensaje en el chat con tu barbería.',
-                  type: 'info',
-                },
-              });
-            } catch (e) {
-              console.error('No se pudo mostrar notificación global de nuevo mensaje:', e);
+            if (!isClientRole) {
+              try {
+                dispatch({
+                  type: 'SHOW_NOTIFICATION',
+                  payload: {
+                    message: 'Tienes un nuevo mensaje en el chat con tu barbería.',
+                    type: 'info',
+                  },
+                });
+              } catch (e) {
+                console.error('No se pudo mostrar notificación global de nuevo mensaje:', e);
+              }
             }
           }
 
@@ -490,7 +495,7 @@ const ChatWidget = () => {
       cancelled = true;
       clearInterval(intervalId);
     };
-  }, [conversationId, currentUser, isOpen, dispatch]);
+  }, [conversationId, currentUser, isOpen, dispatch, isClientRole]);
 
   useEffect(() => {
     if (isOpen && shouldAutoScroll && chatEndRef.current) {
@@ -608,7 +613,7 @@ const ChatWidget = () => {
         className="fixed bottom-6 right-6 bg-slate-900 hover:bg-slate-800 text-white px-4 py-3 rounded-full shadow-2xl flex items-center gap-2 text-sm font-semibold z-[9999]"
       >
         <span>Chat</span>
-        {unreadCount > 0 && (
+        {!isClientRole && unreadCount > 0 && (
           <span className="bg-red-500 text-xs w-5 h-5 rounded-full flex items-center justify-center">
             {unreadCount}
           </span>
@@ -744,6 +749,12 @@ const ChatWidget = () => {
             const isRescheduleProposal =
               isSystem && relatedAction === 'RESCHEDULE_PROPOSAL' && !!relatedId;
 
+            const isReviewRequest = (() => {
+              if (!isSystem || !relatedId) return false;
+              const a = String(relatedAction || '').trim().toUpperCase();
+              return a === 'REVIEW_REQUEST';
+            })();
+
             const isRescheduleProposalAlreadyResponded =
               isRescheduleProposal && respondedRescheduleNotificationIds.has(String(relatedId));
 
@@ -800,6 +811,10 @@ const ChatWidget = () => {
                         }
                       }}
                     />
+                  )}
+
+                  {isReviewRequest && !isMine && (
+                    <ReviewRequestActions appointmentId={relatedId} />
                   )}
                   <span
                     className={`block mt-1 text-[10px] ${
@@ -927,6 +942,41 @@ const RescheduleProposalActions = ({ notificationId, onRespond, disabled = false
         className="px-2 py-1 rounded-md bg-red-500 hover:bg-red-600 text-white text-[10px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-400 disabled:hover:bg-slate-400"
       >
         Rechazar
+      </button>
+    </div>
+  );
+};
+
+const ReviewRequestActions = ({ appointmentId }) => {
+  const { state } = useContext(AppContext);
+
+  if (!appointmentId) return null;
+
+  return (
+    <div className="mt-2 flex gap-2 justify-end">
+      <button
+        type="button"
+        onClick={() => {
+          try {
+            const appts = Array.isArray(state.appointments) ? state.appointments : [];
+            const appt = appts.find((a) => String(a?.id) === String(appointmentId)) || null;
+            const shopId = appt?.shopId ?? appt?.shop_id ?? null;
+            if (shopId == null) return;
+            window.dispatchEvent(
+              new CustomEvent('open-reviews-modal', {
+                detail: {
+                  shopId,
+                  appointmentId,
+                },
+              })
+            );
+          } catch (e) {
+            console.error('No se pudo abrir el popup de reseñas desde el chat:', e);
+          }
+        }}
+        className="px-2 py-1 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-semibold"
+      >
+        Dejar reseña
       </button>
     </div>
   );

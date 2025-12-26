@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { AppContext } from '../App';
 import OwnerProductsManagement from './OwnerProductsManagement';
 import OwnerSummary from './OwnerSummary';
@@ -40,6 +40,15 @@ const OwnerDashboard = () => {
   const [shopSearch, setShopSearch] = useState('');
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [growthPeriod, setGrowthPeriod] = useState('week');
+  const [growthWeekOffset, setGrowthWeekOffset] = useState(0);
+  const [growthMonth, setGrowthMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [growthYear, setGrowthYear] = useState(() => String(new Date().getFullYear()));
+  const [growthFromDate, setGrowthFromDate] = useState('');
+  const [growthToDate, setGrowthToDate] = useState('');
 
   const getAppointmentShopId = (a) => (a?.shopId ?? a?.shop_id ?? null);
   const getUserShopId = (u) => (u?.shopId ?? u?.shop_id ?? null);
@@ -82,6 +91,211 @@ const OwnerDashboard = () => {
       const inShop = String(getUserShopId(u) ?? '') === String(currentShop?.id ?? '');
       return inList || inShop;
     });
+
+  const growthAnalytics = useMemo(() => {
+    const appts = Array.isArray(summaryAppointments) ? summaryAppointments : [];
+
+    const normalizeStatus = (status) => String(status || '').trim().toLowerCase();
+    const isCompletedStatus = (status) => {
+      const s = normalizeStatus(status);
+      return s === 'completed' || s === 'completada' || s === 'completado' || s.startsWith('complet');
+    };
+
+    const DEFAULT_TIMEZONE_OFFSET = '-04:00';
+
+    const getRdDateString = (date = new Date()) => {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Santo_Domingo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(date);
+
+      const y = parts.find(p => p.type === 'year')?.value;
+      const m = parts.find(p => p.type === 'month')?.value;
+      const d = parts.find(p => p.type === 'day')?.value;
+      if (!y || !m || !d) return null;
+      return `${y}-${m}-${d}`;
+    };
+    const parseInstantMs = (raw) => {
+      if (!raw) return null;
+      if (raw instanceof Date) {
+        const ms = raw.getTime();
+        return Number.isNaN(ms) ? null : ms;
+      }
+      const s = String(raw).trim();
+      if (!s) return null;
+
+      const hasExplicitOffset = /Z$|[+-]\d{2}:\d{2}$/.test(s);
+      const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(s);
+      const isNaiveIsoDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(s);
+      const isNaiveSqlDateTime = /^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}(:\d{2})?$/.test(s);
+
+      let d = null;
+      if (hasExplicitOffset) d = new Date(s);
+      else if (isDateOnly) d = new Date(`${s}T00:00:00${DEFAULT_TIMEZONE_OFFSET}`);
+      else if (isNaiveIsoDateTime) d = new Date(`${s}${DEFAULT_TIMEZONE_OFFSET}`);
+      else if (isNaiveSqlDateTime) d = new Date(`${s.replace(' ', 'T')}${DEFAULT_TIMEZONE_OFFSET}`);
+      else d = new Date(s);
+
+      const ms = d.getTime();
+      return Number.isNaN(ms) ? null : ms;
+    };
+
+    const getApptMs = (a) => parseInstantMs(a?.startTime || a?.date || a?.start_time || null);
+    const getClientId = (a) => (a?.clientId ?? a?.client_id ?? null);
+
+    const getGrowthRangeMs = () => {
+      const rdTodayStr = getRdDateString(new Date());
+      if (!rdTodayStr) return { startMs: null, endMs: null };
+      const baseMidnight = new Date(`${rdTodayStr}T00:00:00${DEFAULT_TIMEZONE_OFFSET}`);
+      const baseMs = baseMidnight.getTime();
+      if (Number.isNaN(baseMs)) return { startMs: null, endMs: null };
+
+      if (growthPeriod === 'week') {
+        const dow = baseMidnight.getUTCDay();
+        const daysSinceMonday = (dow + 6) % 7;
+        const startOfWeekMs = baseMs - (daysSinceMonday * 24 * 60 * 60 * 1000);
+        const offsetWeeks = Math.min(3, Math.max(0, Number(growthWeekOffset) || 0));
+        const startMs = startOfWeekMs - (offsetWeeks * 7 * 24 * 60 * 60 * 1000);
+        const endMs = startMs + 7 * 24 * 60 * 60 * 1000;
+        return { startMs, endMs };
+      }
+
+      if (growthPeriod === 'month') {
+        const [yy, mm] = String(growthMonth || '').split('-');
+        const y = Number(yy);
+        const m = Number(mm);
+        if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return { startMs: null, endMs: null };
+        const start = new Date(`${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-01T00:00:00${DEFAULT_TIMEZONE_OFFSET}`);
+        const startMs = start.getTime();
+        if (Number.isNaN(startMs)) return { startMs: null, endMs: null };
+        const next = new Date(start.getTime());
+        next.setUTCMonth(next.getUTCMonth() + 1);
+        const endMs = next.getTime();
+        return { startMs, endMs };
+      }
+
+      if (growthPeriod === 'year') {
+        const y = Number(growthYear);
+        if (!Number.isFinite(y)) return { startMs: null, endMs: null };
+        const start = new Date(`${String(y).padStart(4, '0')}-01-01T00:00:00${DEFAULT_TIMEZONE_OFFSET}`);
+        const startMs = start.getTime();
+        if (Number.isNaN(startMs)) return { startMs: null, endMs: null };
+        const end = new Date(`${String(y + 1).padStart(4, '0')}-01-01T00:00:00${DEFAULT_TIMEZONE_OFFSET}`);
+        const endMs = end.getTime();
+        return { startMs, endMs: Number.isNaN(endMs) ? null : endMs };
+      }
+
+      if (growthPeriod === 'range') {
+        const from = String(growthFromDate || '').trim();
+        const to = String(growthToDate || '').trim();
+        if (!from || !to) return { startMs: null, endMs: null };
+        const start = new Date(`${from}T00:00:00${DEFAULT_TIMEZONE_OFFSET}`);
+        const startMs = start.getTime();
+        if (Number.isNaN(startMs)) return { startMs: null, endMs: null };
+        const end = new Date(`${to}T00:00:00${DEFAULT_TIMEZONE_OFFSET}`);
+        const endMsBase = end.getTime();
+        if (Number.isNaN(endMsBase)) return { startMs: null, endMs: null };
+        const endMs = endMsBase + 24 * 60 * 60 * 1000;
+        return { startMs, endMs };
+      }
+
+      return { startMs: null, endMs: null };
+    };
+
+    const { startMs: curStart, endMs: curEnd } = getGrowthRangeMs();
+    const durationMs = (curStart != null && curEnd != null) ? (curEnd - curStart) : null;
+
+    const prevRange = (() => {
+      if (curStart == null || curEnd == null) return { prevStart: null, prevEnd: null };
+
+      if (growthPeriod === 'week') {
+        return { prevStart: curStart - (7 * 24 * 60 * 60 * 1000), prevEnd: curStart };
+      }
+
+      if (growthPeriod === 'month') {
+        const curStartDate = new Date(curStart);
+        const prevStartDate = new Date(curStartDate.getTime());
+        prevStartDate.setUTCMonth(prevStartDate.getUTCMonth() - 1);
+        return { prevStart: prevStartDate.getTime(), prevEnd: curStart };
+      }
+
+      if (growthPeriod === 'year') {
+        const curStartDate = new Date(curStart);
+        const prevStartDate = new Date(curStartDate.getTime());
+        prevStartDate.setUTCFullYear(prevStartDate.getUTCFullYear() - 1);
+        return { prevStart: prevStartDate.getTime(), prevEnd: curStart };
+      }
+
+      if (durationMs == null) return { prevStart: null, prevEnd: null };
+      return { prevStart: curStart - durationMs, prevEnd: curStart };
+    })();
+
+    const prevStart = prevRange.prevStart;
+    const prevEnd = prevRange.prevEnd;
+
+    const firstByClient = new Map();
+    const activeCur = new Set();
+
+    for (const a of appts) {
+      if (!isCompletedStatus(a?.status)) continue;
+      const cid = getClientId(a);
+      if (cid == null) continue;
+      const ms = getApptMs(a);
+      if (ms == null) continue;
+
+      const key = String(cid);
+      const prev = firstByClient.get(key);
+      if (prev == null || ms < prev) firstByClient.set(key, ms);
+      if (ms >= curStart && ms <= curEnd) activeCur.add(key);
+    }
+
+    const totalClients = firstByClient.size;
+
+    let newClientsCur = 0;
+    let newClientsPrev = 0;
+    for (const [, firstMs] of firstByClient.entries()) {
+      if (firstMs >= curStart && firstMs <= curEnd) newClientsCur += 1;
+      if (firstMs >= prevStart && firstMs <= prevEnd) newClientsPrev += 1;
+    }
+
+    const growthPct = (() => {
+      if (newClientsPrev <= 0) return newClientsCur > 0 ? 100 : 0;
+      return ((newClientsCur - newClientsPrev) / newClientsPrev) * 100;
+    })();
+
+    const growthAbs = newClientsCur - newClientsPrev;
+    const growthSign = growthAbs >= 0 ? '+' : '';
+    const growthLabel = `${growthSign}${Math.round(growthPct)}%`;
+
+    const windowLabel = (() => {
+      if (growthPeriod === 'week') {
+        const off = Math.min(3, Math.max(0, Number(growthWeekOffset) || 0));
+        return off === 0 ? 'Esta semana' : `Hace ${off} semana${off === 1 ? '' : 's'}`;
+      }
+      if (growthPeriod === 'month') return `Mes: ${growthMonth}`;
+      if (growthPeriod === 'year') return `Año: ${growthYear}`;
+      if (growthPeriod === 'range') {
+        const from = String(growthFromDate || '').trim();
+        const to = String(growthToDate || '').trim();
+        if (!from || !to) return 'Rango: selecciona fechas';
+        return `Rango: ${from} a ${to}`;
+      }
+      return '';
+    })();
+
+    return {
+      newClientsCur,
+      newClientsPrev,
+      activeClientsCur: activeCur.size,
+      totalClients,
+      growthAbs,
+      growthPct,
+      growthLabel,
+      windowLabel,
+    };
+  }, [growthFromDate, growthMonth, growthPeriod, growthToDate, growthWeekOffset, growthYear, summaryAppointments]);
 
   const filteredShops = visibleShops.filter(shop => {
     if (!shopSearch.trim()) return true;
@@ -216,7 +430,138 @@ const OwnerDashboard = () => {
             ) : null}
           </header>
           <section>
-            <h2 className="text-xl font-semibold text-slate-700 mb-6">{sectionTitles[activeSection]}</h2>
+            {activeSection !== 'summary' && (
+              <h2 className="text-xl font-semibold text-slate-700 mb-6">{sectionTitles[activeSection]}</h2>
+            )}
+
+            {activeSection === 'summary' && (
+              <div className="mb-6 bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                <div className="p-4 md:p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-3 border-b border-slate-100">
+                  <div>
+                    <div className="text-lg font-bold text-slate-800">Analítica de Crecimiento</div>
+                    <div className="text-xs text-slate-500">{growthAnalytics.windowLabel}</div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex bg-slate-100 rounded-lg p-1">
+                      <button
+                        type="button"
+                        className={`px-4 py-1.5 text-sm font-medium rounded-md ${growthPeriod === 'week' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-600 hover:text-slate-800'}`}
+                        onClick={() => setGrowthPeriod('week')}
+                      >
+                        Semana
+                      </button>
+                      <button
+                        type="button"
+                        className={`px-4 py-1.5 text-sm font-medium rounded-md ${growthPeriod === 'month' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-600 hover:text-slate-800'}`}
+                        onClick={() => setGrowthPeriod('month')}
+                      >
+                        Mes
+                      </button>
+                      <button
+                        type="button"
+                        className={`px-4 py-1.5 text-sm font-medium rounded-md ${growthPeriod === 'year' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-600 hover:text-slate-800'}`}
+                        onClick={() => setGrowthPeriod('year')}
+                      >
+                        Año
+                      </button>
+                      <button
+                        type="button"
+                        className={`px-4 py-1.5 text-sm font-medium rounded-md ${growthPeriod === 'range' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-600 hover:text-slate-800'}`}
+                        onClick={() => setGrowthPeriod('range')}
+                      >
+                        Rango
+                      </button>
+                    </div>
+
+                    {growthPeriod === 'week' && (
+                      <select
+                        className="border border-slate-300 rounded-md px-2 py-2 text-sm bg-white"
+                        value={growthWeekOffset}
+                        onChange={(e) => setGrowthWeekOffset(Number(e.target.value) || 0)}
+                      >
+                        {Array.from({ length: 4 }).map((_, idx) => (
+                          <option key={idx} value={idx}>
+                            {idx === 0 ? 'Esta semana' : `Hace ${idx} semana${idx === 1 ? '' : 's'}`}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+
+                    {growthPeriod === 'month' && (
+                      <input
+                        type="month"
+                        className="border border-slate-300 rounded-md px-2 py-2 text-sm bg-white"
+                        value={growthMonth}
+                        onChange={(e) => setGrowthMonth(e.target.value)}
+                      />
+                    )}
+
+                    {growthPeriod === 'year' && (
+                      <select
+                        className="border border-slate-300 rounded-md px-2 py-2 text-sm bg-white"
+                        value={growthYear}
+                        onChange={(e) => setGrowthYear(e.target.value)}
+                      >
+                        {Array.from({ length: 7 }).map((_, idx) => {
+                          const y = new Date().getFullYear() - idx;
+                          return (
+                            <option key={y} value={String(y)}>
+                              {y}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    )}
+
+                    {growthPeriod === 'range' && (
+                      <>
+                        <input
+                          type="date"
+                          className="border border-slate-300 rounded-md px-2 py-2 text-sm bg-white"
+                          value={growthFromDate}
+                          onChange={(e) => setGrowthFromDate(e.target.value)}
+                        />
+                        <span className="text-sm text-slate-500">a</span>
+                        <input
+                          type="date"
+                          className="border border-slate-300 rounded-md px-2 py-2 text-sm bg-white"
+                          value={growthToDate}
+                          onChange={(e) => setGrowthToDate(e.target.value)}
+                        />
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-4 md:p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-slate-50 rounded-xl border border-slate-100 p-4">
+                    <div className="text-xs font-semibold text-slate-500">Clientes nuevos</div>
+                    <div className="mt-1 text-2xl font-bold text-slate-900">{growthAnalytics.newClientsCur}</div>
+                    <div className="mt-1 text-xs text-slate-500">Anterior: {growthAnalytics.newClientsPrev}</div>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl border border-slate-100 p-4">
+                    <div className="text-xs font-semibold text-slate-500">Clientes activos</div>
+                    <div className="mt-1 text-2xl font-bold text-slate-900">{growthAnalytics.activeClientsCur}</div>
+                    <div className="mt-1 text-xs text-slate-500">Con citas completadas en el período</div>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl border border-slate-100 p-4">
+                    <div className="text-xs font-semibold text-slate-500">Clientes totales</div>
+                    <div className="mt-1 text-2xl font-bold text-slate-900">{growthAnalytics.totalClients}</div>
+                    <div className="mt-1 text-xs text-slate-500">Histórico (citas completadas)</div>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl border border-slate-100 p-4">
+                    <div className="text-xs font-semibold text-slate-500">Crecimiento</div>
+                    <div className="mt-1 flex items-baseline gap-2">
+                      <div className="text-2xl font-bold text-slate-900">{growthAnalytics.growthLabel}</div>
+                      <div className={`text-xs font-semibold ${growthAnalytics.growthAbs >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                        {growthAnalytics.growthAbs >= 0 ? '↑' : '↓'} {Math.abs(growthAnalytics.growthAbs)}
+                      </div>
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500">vs período anterior</div>
+                  </div>
+                </div>
+              </div>
+            )}
             {activeSection === 'summary' && (
                 <OwnerSummary 
                   shop={currentShop} 

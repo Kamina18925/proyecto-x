@@ -105,6 +105,18 @@ export const userApi = {
       method: 'PUT',
       body: JSON.stringify(userData),
     }),
+
+  updateProfile: (id, profileData) =>
+    fetchWithErrorHandling(`${API_BASE_URL}/users/${id}/profile`, {
+      method: 'PUT',
+      body: JSON.stringify(profileData),
+    }),
+
+  changePassword: (id, data) =>
+    fetchWithErrorHandling(`${API_BASE_URL}/users/${id}/change-password`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
   
   delete: (id) => 
     fetchWithErrorHandling(`${API_BASE_URL}/users/${id}`, {
@@ -119,6 +131,15 @@ export const barberShopApi = {
   
   getById: (id) => 
     fetchWithErrorHandling(`${API_BASE_URL}/barbershops/${id}`),
+
+  getReviews: (shopId) =>
+    fetchWithErrorHandling(`${API_BASE_URL}/barbershops/${shopId}/reviews`),
+
+  addReview: (shopId, data) =>
+    fetchWithErrorHandling(`${API_BASE_URL}/barbershops/${shopId}/reviews`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   
   create: (shopData) => 
     fetchWithErrorHandling(`${API_BASE_URL}/barbershops`, {
@@ -217,6 +238,12 @@ export const appointmentApi = {
   complete: (id) => 
     fetchWithErrorHandling(`${API_BASE_URL}/appointments/${id}/complete`, {
       method: 'PUT',
+    }),
+
+  updatePayment: (id, data) =>
+    fetchWithErrorHandling(`${API_BASE_URL}/appointments/${id}/payment`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
     }),
   
   noShow: (id) => 

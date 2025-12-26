@@ -103,8 +103,8 @@ const BarberShopInfoView = ({ shop }) => {
               </div>
               
               <div className="bg-slate-50 p-4 rounded-lg text-center">
-                <div className="text-3xl font-bold text-amber-500 mb-1">{shop.rating || '★★★★'}</div>
-                <div className="text-slate-600 text-sm">Calificación</div>
+                <div className="text-3xl font-bold text-amber-500 mb-1">{(Number(shop.rating ?? 0) || 0).toFixed(1)}</div>
+                <div className="text-slate-600 text-sm">Calificación ({Number(shop.reviewCount ?? shop.review_count ?? 0) || 0})</div>
               </div>
             </div>
           </div>

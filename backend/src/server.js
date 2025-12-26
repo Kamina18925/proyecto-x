@@ -61,6 +61,77 @@ const ensureUsersWhatsappLinkColumn = async () => {
   }
 };
 
+const ensureUsersPhotoUrlColumn = async () => {
+  try {
+    await pool.query(
+      `ALTER TABLE users
+       ADD COLUMN IF NOT EXISTS photo_url TEXT`
+    );
+  } catch (error) {
+    console.error('Error asegurando columna photo_url en users:', error);
+  }
+};
+
+const ensureAppointmentsClientReviewedColumn = async () => {
+  try {
+    await pool.query(
+      `ALTER TABLE appointments
+       ADD COLUMN IF NOT EXISTS client_reviewed BOOLEAN DEFAULT FALSE`
+    );
+  } catch (error) {
+    console.error('Error asegurando columna client_reviewed en appointments:', error);
+  }
+};
+
+const ensureAppointmentsActualEndTimeColumn = async () => {
+  try {
+    await pool.query(
+      `ALTER TABLE appointments
+       ADD COLUMN IF NOT EXISTS actual_end_time TIMESTAMP`
+    );
+  } catch (error) {
+    console.error('Error asegurando columna actual_end_time en appointments:', error);
+  }
+};
+
+const ensureAppointmentsPaymentColumns = async () => {
+  try {
+    await pool.query(
+      `ALTER TABLE appointments
+       ADD COLUMN IF NOT EXISTS payment_method TEXT`
+    );
+    await pool.query(
+      `ALTER TABLE appointments
+       ADD COLUMN IF NOT EXISTS payment_status TEXT`
+    );
+    await pool.query(
+      `ALTER TABLE appointments
+       ADD COLUMN IF NOT EXISTS payment_marked_at TIMESTAMP`
+    );
+    await pool.query(
+      `ALTER TABLE appointments
+       ADD COLUMN IF NOT EXISTS payment_marked_by INTEGER`
+    );
+  } catch (error) {
+    console.error('Error asegurando columnas de pago en appointments:', error);
+  }
+};
+
+const ensureReviewsColumns = async () => {
+  try {
+    await pool.query(
+      `ALTER TABLE reviews
+       ADD COLUMN IF NOT EXISTS appointment_id INTEGER`
+    );
+    await pool.query(
+      `ALTER TABLE reviews
+       ADD COLUMN IF NOT EXISTS photo_url TEXT`
+    );
+  } catch (error) {
+    console.error('Error asegurando columnas adicionales en reviews:', error);
+  }
+};
+
 const cleanupChatMessagesByRetention = async () => {
   const client = await pool.connect();
   try {
@@ -94,6 +165,11 @@ const startServer = async () => {
   await ensureAppointmentClientHiddenColumn();
   await ensureConversationArchiveColumns();
   await ensureUsersWhatsappLinkColumn();
+  await ensureUsersPhotoUrlColumn();
+  await ensureAppointmentsClientReviewedColumn();
+  await ensureAppointmentsActualEndTimeColumn();
+  await ensureAppointmentsPaymentColumns();
+  await ensureReviewsColumns();
 
   // Ejecutar limpieza una vez al iniciar
   try {

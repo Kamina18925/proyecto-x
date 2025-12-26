@@ -187,3 +187,5 @@ backend/barber-backend/
 uploads/
 *.db
 .bolt/
+
+plan de implementación/

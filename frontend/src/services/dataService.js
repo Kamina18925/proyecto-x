@@ -81,6 +81,10 @@ export const loadInitialState = async () => {
         description: bs.description || schedule.description || '',
         email: bs.email || schedule.email || '',
         photoUrl: bs.photoUrl || schedule.photoUrl || '',
+        rating: bs.rating != null ? Number(bs.rating) : 0,
+        reviewCount: bs.reviewCount !== undefined
+          ? bs.reviewCount
+          : (bs.review_count !== undefined ? bs.review_count : 0),
         latitude: bs.latitude !== undefined ? bs.latitude : (schedule.latitude !== undefined ? schedule.latitude : (schedule.lat !== undefined ? schedule.lat : '')),
         longitude: bs.longitude !== undefined ? bs.longitude : (schedule.longitude !== undefined ? schedule.longitude : (schedule.lng !== undefined ? schedule.lng : '')),
       };
@@ -131,6 +135,12 @@ export const loadInitialState = async () => {
       startTime: a.startTime || a.date || null,
       status: a.status || 'confirmed',
       notes: a.notes || null,
+      clientReviewed: a.clientReviewed !== undefined ? a.clientReviewed : (a.client_reviewed !== undefined ? a.client_reviewed : false),
+      actualEndTime: a.actualEndTime || a.actual_end_time || null,
+      paymentMethod: a.paymentMethod || a.payment_method || null,
+      paymentStatus: a.paymentStatus || a.payment_status || null,
+      paymentMarkedAt: a.paymentMarkedAt || a.payment_marked_at || null,
+      paymentMarkedBy: a.paymentMarkedBy || a.payment_marked_by || null,
       // Campos adicionales opcionales
       priceAtBooking: a.priceAtBooking || a.price_at_booking || null,
       clientPhoneNumberAtBooking: a.clientPhoneNumberAtBooking || a.client_phone_number_at_booking || null,
@@ -424,6 +434,7 @@ export const loadAppointments = async () => {
       startTime: a.startTime || a.date || null,
       status: a.status || 'confirmed',
       notes: a.notes || null,
+      clientReviewed: a.clientReviewed !== undefined ? a.clientReviewed : (a.client_reviewed !== undefined ? a.client_reviewed : false),
       // Campos adicionales opcionales
       priceAtBooking: a.priceAtBooking || a.price_at_booking || null,
       clientPhoneNumberAtBooking: a.clientPhoneNumberAtBooking || a.client_phone_number_at_booking || null,
@@ -524,6 +535,9 @@ export const saveAppointment = async (appointment) => {
       // Campos adicionales opcionales
       price_at_booking: appointment.priceAtBooking || appointment.price_at_booking || null,
       client_phone_number_at_booking: appointment.clientPhoneNumberAtBooking || appointment.client_phone_number_at_booking || null,
+      client_reviewed: appointment.clientReviewed !== undefined
+        ? appointment.clientReviewed
+        : (appointment.client_reviewed !== undefined ? appointment.client_reviewed : undefined),
     };
 
     let saved;
@@ -543,8 +557,16 @@ export const saveAppointment = async (appointment) => {
       startTime: saved.startTime || saved.date || appointment.startTime || null,
       status: saved.status || appointment.status || 'confirmed',
       notes: saved.notes || appointment.notes || null,
+      actualEndTime: saved.actualEndTime || saved.actual_end_time || appointment.actualEndTime || appointment.actual_end_time || null,
+      paymentMethod: saved.paymentMethod || saved.payment_method || appointment.paymentMethod || appointment.payment_method || null,
+      paymentStatus: saved.paymentStatus || saved.payment_status || appointment.paymentStatus || appointment.payment_status || null,
+      paymentMarkedAt: saved.paymentMarkedAt || saved.payment_marked_at || appointment.paymentMarkedAt || appointment.payment_marked_at || null,
+      paymentMarkedBy: saved.paymentMarkedBy || saved.payment_marked_by || appointment.paymentMarkedBy || appointment.payment_marked_by || null,
       priceAtBooking: saved.priceAtBooking || saved.price_at_booking || appointment.priceAtBooking || null,
       clientPhoneNumberAtBooking: saved.clientPhoneNumberAtBooking || saved.client_phone_number_at_booking || appointment.clientPhoneNumberAtBooking || null,
+      clientReviewed: saved.clientReviewed !== undefined
+        ? saved.clientReviewed
+        : (saved.client_reviewed !== undefined ? saved.client_reviewed : (appointment.clientReviewed !== undefined ? appointment.clientReviewed : (appointment.client_reviewed !== undefined ? appointment.client_reviewed : false))),
     };
 
     return normalized;

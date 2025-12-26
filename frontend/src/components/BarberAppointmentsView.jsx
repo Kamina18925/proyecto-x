@@ -1,6 +1,7 @@
 import React, { useContext, useState, useEffect, useMemo } from 'react';
 import { AppContext } from '../App';
 import { proposeAdvanceAppointment } from '../services/dataService';
+import { getOrCreateConversationForAppointment, sendChatMessage } from '../services/dataService';
 import api from '../services/apiService';
 
 // Traducir estados internos de cita a etiquetas en español
@@ -33,6 +34,7 @@ const BarberAppointmentsView = ({ barber, shop }) => {
 
   const [historyMode, setHistoryMode] = useState('cancelled');
   const [historyDeleting, setHistoryDeleting] = useState(false);
+  const [paymentSavingById, setPaymentSavingById] = useState({});
 
   const DEFAULT_TIMEZONE_OFFSET = '-04:00';
 
@@ -77,6 +79,10 @@ const BarberAppointmentsView = ({ barber, shop }) => {
     hiddenForClient: a.hiddenForClient !== undefined ? a.hiddenForClient : (a.hidden_for_client !== undefined ? a.hidden_for_client : false),
     cancelledAt: a.cancelledAt || a.cancelled_at || null,
     actualEndTime: a.actualEndTime || a.actual_end_time || null,
+    paymentMethod: a.paymentMethod || a.payment_method || null,
+    paymentStatus: a.paymentStatus || a.payment_status || null,
+    paymentMarkedAt: a.paymentMarkedAt || a.payment_marked_at || null,
+    paymentMarkedBy: a.paymentMarkedBy || a.payment_marked_by || null,
   }));
 
   const getAppointmentEventMs = (appt, nowMs) => {
@@ -138,6 +144,75 @@ const BarberAppointmentsView = ({ barber, shop }) => {
   const isCompletedStatus = (st) => {
     const s = normalizeStatus(st);
     return s === 'completed' || s === 'completada' || s === 'completado' || s.startsWith('complet');
+  };
+
+  const normalizePaymentMethod = (m) => {
+    const s = String(m || '').trim().toLowerCase();
+    if (!s) return null;
+    if (s === 'cash' || s === 'efectivo') return 'cash';
+    if (s === 'card' || s === 'tarjeta') return 'card';
+    if (s === 'transfer' || s === 'transferencia') return 'transfer';
+    return null;
+  };
+
+  const normalizePaymentStatus = (st) => {
+    const s = String(st || '').trim().toLowerCase();
+    if (!s) return null;
+    if (s === 'paid' || s === 'pagado') return 'paid';
+    if (s === 'unpaid' || s === 'no_paid' || s === 'no_payo' || s === 'no_pagado' || s === 'no pago') return 'unpaid';
+    if (s === 'pending' || s === 'pendiente') return 'pending';
+    return null;
+  };
+
+  const getPaymentSummary = (appt) => {
+    const st = normalizePaymentStatus(appt?.paymentStatus ?? appt?.payment_status ?? null);
+    const method = normalizePaymentMethod(appt?.paymentMethod ?? appt?.payment_method ?? null);
+
+    if (st === 'unpaid') {
+      return { label: 'No pagó', className: 'bg-red-100 text-red-800' };
+    }
+
+    if (st === 'paid') {
+      const methodLabel = method === 'card' ? 'Tarjeta' : method === 'transfer' ? 'Transferencia' : method === 'cash' ? 'Efectivo' : 'Pagado';
+      return { label: methodLabel, className: 'bg-emerald-100 text-emerald-800' };
+    }
+
+    return { label: 'Sin marcar', className: 'bg-slate-100 text-slate-700' };
+  };
+
+  const handleUpdateAppointmentPayment = async (appointmentId, paymentMethod, paymentStatus) => {
+    const user = state.currentUser || {};
+    const requesterId = user.id;
+    const requesterRole = user.role || user.rol || '';
+
+    setPaymentSavingById(prev => ({ ...prev, [appointmentId]: true }));
+    try {
+      const updated = await api.appointments.updatePayment(appointmentId, {
+        paymentMethod,
+        paymentStatus,
+        requesterId,
+        requesterRole,
+      });
+
+      if (updated && dispatch) {
+        dispatch({
+          type: 'UPDATE_APPOINTMENT',
+          meta: { skipApi: true },
+          payload: {
+            id: updated.id,
+            actualEndTime: updated.actualEndTime || updated.actual_end_time || null,
+            paymentMethod: updated.paymentMethod || updated.payment_method || null,
+            paymentStatus: updated.paymentStatus || updated.payment_status || null,
+            paymentMarkedAt: updated.paymentMarkedAt || updated.payment_marked_at || null,
+            paymentMarkedBy: updated.paymentMarkedBy || updated.payment_marked_by || null,
+          },
+        });
+      }
+    } catch (e) {
+      console.error('No se pudo actualizar el pago de la cita:', e);
+    } finally {
+      setPaymentSavingById(prev => ({ ...prev, [appointmentId]: false }));
+    }
   };
 
   const getStatusPillClass = (status) => {
@@ -476,10 +551,6 @@ const BarberAppointmentsView = ({ barber, shop }) => {
 
     const appts = Array.isArray(state.appointments) ? state.appointments : [];
     for (const appt of appts) {
-      const apptBarberId = appt?.barberId ?? appt?.barber_id ?? null;
-      if (apptBarberId == null || barber?.id == null) continue;
-      if (String(apptBarberId) !== String(barber.id)) continue;
-
       const apptShopId = appt?.shopId ?? appt?.shop_id ?? null;
       if (shop?.id != null && apptShopId != null && String(apptShopId) !== String(shop.id)) continue;
 
@@ -501,6 +572,7 @@ const BarberAppointmentsView = ({ barber, shop }) => {
           completed90: 0,
           total90: 0,
           lastBadMs: null,
+          unpaid90: 0,
         };
       }
 
@@ -516,15 +588,22 @@ const BarberAppointmentsView = ({ barber, shop }) => {
       } else if (completed) {
         map[clientId].completed90 += 1;
       }
+
+      const paymentStatus = normalizePaymentStatus(appt?.paymentStatus ?? appt?.payment_status ?? null);
+      if (paymentStatus === 'unpaid') {
+        map[clientId].unpaid90 += 1;
+        map[clientId].lastBadMs = Math.max(map[clientId].lastBadMs || 0, eventMs);
+      }
     }
 
     Object.keys(map).forEach((clientId) => {
       const stats = map[clientId];
-      const bad = (stats.cancelled90 || 0) + (stats.noShow90 || 0);
+      const bad = (stats.cancelled90 || 0) + (stats.noShow90 || 0) + (stats.unpaid90 || 0);
       const rate = stats.total90 > 0 ? bad / stats.total90 : 0;
 
       let level = 'none';
-      if ((stats.noShow90 || 0) >= 2) level = 'high';
+      if ((stats.unpaid90 || 0) >= 1) level = 'high';
+      else if ((stats.noShow90 || 0) >= 2) level = 'high';
       else if ((stats.cancelled90 || 0) >= 3) level = 'high';
       else if (bad >= 2) level = 'medium';
       else if (bad === 1) level = 'low';
@@ -538,7 +617,49 @@ const BarberAppointmentsView = ({ barber, shop }) => {
     });
 
     return map;
-  }, [state.appointments, barber?.id, shop?.id]);
+  }, [state.appointments, shop?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const runAuto = async () => {
+      try {
+        const nowMs = Date.now();
+        const appts = Array.isArray(state.appointments) ? state.appointments : [];
+        for (const appt of appts) {
+          if (cancelled) return;
+          const apptBarberId = appt?.barberId ?? appt?.barber_id ?? null;
+          if (apptBarberId == null || barber?.id == null) continue;
+          if (String(apptBarberId) !== String(barber.id)) continue;
+
+          const apptShopId = appt?.shopId ?? appt?.shop_id ?? null;
+          if (shop?.id != null && apptShopId != null && String(apptShopId) !== String(shop.id)) continue;
+
+          if (!isCompletedStatus(appt?.status)) continue;
+
+          const paymentStatus = normalizePaymentStatus(appt?.paymentStatus ?? appt?.payment_status ?? null);
+          const paymentMethod = normalizePaymentMethod(appt?.paymentMethod ?? appt?.payment_method ?? null);
+          if (paymentStatus || paymentMethod) continue;
+
+          const completedMs = parseAppointmentInstantMs(appt?.actualEndTime || appt?.actual_end_time || null)
+            ?? getAppointmentStartMs(appt);
+          if (completedMs == null) continue;
+
+          if (nowMs - completedMs < 2 * 60 * 60 * 1000) continue;
+          if (paymentSavingById?.[appt.id]) continue;
+
+          await handleUpdateAppointmentPayment(appt.id, 'cash', 'paid');
+        }
+      } catch (e) {
+        console.error('Error aplicando pago automático:', e);
+      }
+    };
+
+    runAuto();
+    return () => {
+      cancelled = true;
+    };
+  }, [barber?.id, shop?.id, state.appointments]);
 
   const openClientBehaviorModal = (clientId) => {
     try {
@@ -706,14 +827,41 @@ const BarberAppointmentsView = ({ barber, shop }) => {
   };
 
   // Manejar marcar citas como completadas, canceladas o no-show
-  const handleMarkAppointment = (appointmentId, status) => {
+  const handleMarkAppointment = async (appointmentId, status) => {
     if (!window.confirm(`¿Seguro que quieres marcar esta cita como ${status}?`)) return;
     
     if (status === 'completed') {
-      dispatch({
+      await dispatch({
         type: 'COMPLETE_APPOINTMENT',
         payload: { appointmentId, completedAt: new Date().toISOString() }
       });
+
+      try {
+        const appts = Array.isArray(state.appointments) ? state.appointments : [];
+        const appt = appts.find((a) => String(a?.id) === String(appointmentId)) || null;
+        const clientId = appt?.clientId ?? appt?.client_id ?? null;
+        const shopId = appt?.shopId ?? appt?.shop_id ?? null;
+        const reviewed = appt?.clientReviewed !== undefined
+          ? appt.clientReviewed
+          : (appt?.client_reviewed !== undefined ? appt.client_reviewed : false);
+
+        if (clientId != null && barber?.id != null && shopId != null && !reviewed) {
+          const conversationId = await getOrCreateConversationForAppointment(appointmentId);
+          if (conversationId) {
+            await sendChatMessage({
+              conversationId,
+              senderId: barber.id,
+              receiverId: clientId,
+              text: 'Tu cita fue completada. ¿Quieres dejar una reseña sobre tu experiencia?',
+              isSystem: true,
+              relatedAction: 'REVIEW_REQUEST',
+              relatedId: appointmentId,
+            });
+          }
+        }
+      } catch (e) {
+        console.error('No se pudo enviar el mensaje automático de reseña:', e);
+      }
     } else if (status === 'no_show') {
       dispatch({
         type: 'NO_SHOW_APPOINTMENT',
@@ -1047,13 +1195,15 @@ const BarberAppointmentsView = ({ barber, shop }) => {
             const isNoShow = st === 'no_show' || st === 'no-show' || st === 'noshow';
             const isConfirmed = st === 'confirmed' || st === 'confirmada' || st === 'confirmado' || st.startsWith('confirm');
             const isCompleted = st === 'completed' || st === 'completada' || st === 'completado' || st.startsWith('complet');
+            const paymentStatus = normalizePaymentStatus(appt?.paymentStatus ?? appt?.payment_status ?? null);
             const isPastAppt = apptDateTime < new Date() && !appt.actualEndTime && !isCancelled && !isNoShow;
             const isTodayAppt = apptDateTime.toDateString() === new Date().toDateString();
             const canManageExtras = isConfirmed && apptDateTime >= new Date() && !appt.actualEndTime;
             const canOfferAdvance = isConfirmed && apptDateTime > new Date() && !appt.actualEndTime;
 
             let cardBgColor = 'bg-white border-indigo-500 shadow-sm hover:shadow-md transition-shadow';
-            if (isCompleted) cardBgColor = 'bg-green-50 border-green-500';
+            if (isCompleted && paymentStatus === 'unpaid') cardBgColor = 'bg-red-50 border-red-500';
+            else if (isCompleted) cardBgColor = 'bg-green-50 border-green-500';
             else if (isCancelled) cardBgColor = 'bg-red-50 border-red-500 opacity-80';
             else if (isNoShow) cardBgColor = 'bg-yellow-100 border-yellow-600 opacity-80';
             else if (isPastAppt && isConfirmed) cardBgColor = 'bg-orange-50 border-orange-500';
@@ -1077,7 +1227,7 @@ const BarberAppointmentsView = ({ barber, shop }) => {
                                 ? 'bg-amber-100 text-amber-800'
                                 : 'bg-slate-100 text-slate-800'
                           }`}
-                          title={`Historial del cliente (últimos 90 días)\nCancelaciones: ${behaviorStats.cancelled90 ?? 0}\nNo asistió: ${behaviorStats.noShow90 ?? 0}\nCitas: ${behaviorStats.total90 ?? 0}`}
+                          title={`Historial del cliente (últimos 90 días)\nCancelaciones: ${behaviorStats.cancelled90 ?? 0}\nNo asistió: ${behaviorStats.noShow90 ?? 0}\nNo pagó: ${behaviorStats.unpaid90 ?? 0}\nCitas: ${behaviorStats.total90 ?? 0}`}
                         >
                           <span className="uppercase tracking-wider">{behaviorStats.level === 'high' ? 'ALERTA' : behaviorStats.level === 'medium' ? 'ATENCIÓN' : 'HISTORIAL'}</span>
                           <span className="font-semibold">Cliente</span>
@@ -1129,6 +1279,44 @@ const BarberAppointmentsView = ({ barber, shop }) => {
                   </span>
                   <div className="flex flex-wrap gap-2 items-center">
                     <button onClick={() => handleEditNotes(appt)} className="text-xs text-slate-500 hover:text-indigo-600 p-1"><i className="fas fa-edit mr-1"></i>Notas</button>
+
+                    {filter === 'past' && isCompleted && (
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span className={`px-2 py-1 text-[11px] font-bold rounded-full ${getPaymentSummary(appt).className}`}>{getPaymentSummary(appt).label}</span>
+                        <button
+                          type="button"
+                          disabled={Boolean(paymentSavingById?.[appt.id])}
+                          onClick={() => handleUpdateAppointmentPayment(appt.id, 'cash', 'paid')}
+                          className={`text-[11px] font-semibold py-1 px-2 rounded-md border ${normalizePaymentMethod(appt?.paymentMethod) === 'cash' && normalizePaymentStatus(appt?.paymentStatus) === 'paid' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'} ${paymentSavingById?.[appt.id] ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        >
+                          Efectivo
+                        </button>
+                        <button
+                          type="button"
+                          disabled={Boolean(paymentSavingById?.[appt.id])}
+                          onClick={() => handleUpdateAppointmentPayment(appt.id, 'card', 'paid')}
+                          className={`text-[11px] font-semibold py-1 px-2 rounded-md border ${normalizePaymentMethod(appt?.paymentMethod) === 'card' && normalizePaymentStatus(appt?.paymentStatus) === 'paid' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'} ${paymentSavingById?.[appt.id] ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        >
+                          Tarjeta
+                        </button>
+                        <button
+                          type="button"
+                          disabled={Boolean(paymentSavingById?.[appt.id])}
+                          onClick={() => handleUpdateAppointmentPayment(appt.id, 'transfer', 'paid')}
+                          className={`text-[11px] font-semibold py-1 px-2 rounded-md border ${normalizePaymentMethod(appt?.paymentMethod) === 'transfer' && normalizePaymentStatus(appt?.paymentStatus) === 'paid' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'} ${paymentSavingById?.[appt.id] ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        >
+                          Transferencia
+                        </button>
+                        <button
+                          type="button"
+                          disabled={Boolean(paymentSavingById?.[appt.id])}
+                          onClick={() => handleUpdateAppointmentPayment(appt.id, null, 'unpaid')}
+                          className={`text-[11px] font-semibold py-1 px-2 rounded-md border ${normalizePaymentStatus(appt?.paymentStatus) === 'unpaid' ? 'bg-red-600 text-white border-red-600' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'} ${paymentSavingById?.[appt.id] ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        >
+                          No pagó
+                        </button>
+                      </div>
+                    )}
                     
                     {/* Botón de Ofrecer Adelanto */}
                     {canOfferAdvance && (

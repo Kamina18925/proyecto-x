@@ -11,10 +11,18 @@ export const getAllBarberShops = async (req, res) => {
         bs.name, 
         bs.address, 
         bs.schedule,
-        bs.rating, 
+        COALESCE(rv.avg_rating, bs.rating, 0.0) as rating,
+        COALESCE(rv.review_count, 0) as review_count,
         u.name as owner_name,
         u.id as owner_id
       FROM barber_shops bs
+      LEFT JOIN (
+        SELECT shop_id,
+               ROUND(AVG(rating)::numeric, 1) as avg_rating,
+               COUNT(*)::int as review_count
+        FROM reviews
+        GROUP BY shop_id
+      ) rv ON rv.shop_id = bs.id
       LEFT JOIN users u ON bs.owner_id = u.id
       ORDER BY bs.name
     `);
@@ -65,10 +73,18 @@ export const getBarberShopById = async (req, res) => {
         bs.name,
         bs.address,
         bs.schedule,
-        bs.rating,
+        COALESCE(rv.avg_rating, bs.rating, 0.0) as rating,
+        COALESCE(rv.review_count, 0) as review_count,
         bs.owner_id,
         u.name as owner_name
       FROM barber_shops bs
+      LEFT JOIN (
+        SELECT shop_id,
+               ROUND(AVG(rating)::numeric, 1) as avg_rating,
+               COUNT(*)::int as review_count
+        FROM reviews
+        GROUP BY shop_id
+      ) rv ON rv.shop_id = bs.id
       LEFT JOIN users u ON bs.owner_id = u.id
       WHERE bs.id = $1
       `,
@@ -124,6 +140,141 @@ export const getBarberShopById = async (req, res) => {
   } catch (error) {
     console.error('Error al obtener barbería por ID:', error);
     res.status(500).json({ message: 'Error del servidor al obtener barbería' });
+  }
+};
+
+export const getBarberShopReviews = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      `SELECT
+         r.id,
+         r.uuid,
+         r.rating,
+         r.comment,
+         r.photo_url,
+         r.appointment_id,
+         r.created_at,
+         u.id as user_id,
+         u.name as user_name,
+         u.photo_url as user_photo_url
+       FROM reviews r
+       JOIN users u ON u.id = r.user_id
+       WHERE r.shop_id = $1
+       ORDER BY r.created_at DESC`,
+      [id]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error al obtener reseñas:', error);
+    res.status(500).json({ message: 'Error del servidor al obtener reseñas' });
+  }
+};
+
+export const addBarberShopReview = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { id } = req.params;
+    const shopId = Number(id);
+    const {
+      userId,
+      appointmentId,
+      rating,
+      comment,
+      photoUrl,
+      photo_url
+    } = req.body || {};
+
+    const finalUserId = userId;
+    const finalAppointmentId = appointmentId;
+    const finalRating = Number(rating);
+    const finalComment = comment != null ? String(comment) : null;
+    const incomingPhotoUrl = (photoUrl !== undefined ? photoUrl : photo_url);
+
+    if (!shopId || Number.isNaN(shopId)) {
+      return res.status(400).json({ message: 'shopId inválido' });
+    }
+
+    if (!finalUserId || !finalAppointmentId) {
+      return res.status(400).json({ message: 'userId y appointmentId son requeridos' });
+    }
+
+    if (!Number.isFinite(finalRating) || finalRating < 1 || finalRating > 5) {
+      return res.status(400).json({ message: 'rating inválido (1-5)' });
+    }
+
+    await client.query('BEGIN');
+
+    const apptCheck = await client.query(
+      `SELECT id
+       FROM appointments
+       WHERE id = $1
+         AND shop_id = $2
+         AND client_id = $3
+         AND status = 'completed'
+         AND COALESCE(client_reviewed, FALSE) = FALSE
+       LIMIT 1`,
+      [finalAppointmentId, shopId, finalUserId]
+    );
+
+    if (apptCheck.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ message: 'No tienes una cita completada pendiente de reseña para esta barbería.' });
+    }
+
+    let finalPhotoUrl = incomingPhotoUrl;
+    if (finalPhotoUrl === undefined) {
+      const userRes = await client.query('SELECT photo_url FROM users WHERE id = $1', [finalUserId]);
+      finalPhotoUrl = userRes.rows[0]?.photo_url || null;
+    }
+
+    const insertRes = await client.query(
+      `INSERT INTO reviews (shop_id, user_id, appointment_id, rating, comment, photo_url)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, uuid, shop_id, user_id, appointment_id, rating, comment, photo_url, created_at`,
+      [shopId, finalUserId, finalAppointmentId, finalRating, finalComment, finalPhotoUrl]
+    );
+
+    await client.query(
+      'UPDATE appointments SET client_reviewed = TRUE, updated_at = NOW() WHERE id = $1',
+      [finalAppointmentId]
+    );
+
+    const summaryRes = await client.query(
+      `SELECT
+         COALESCE(ROUND(AVG(rating)::numeric, 1), 0.0) as rating,
+         COUNT(*)::int as review_count
+       FROM reviews
+       WHERE shop_id = $1`,
+      [shopId]
+    );
+
+    const nextRating = Number(summaryRes.rows[0]?.rating ?? 0) || 0;
+    const reviewCount = Number(summaryRes.rows[0]?.review_count ?? 0) || 0;
+
+    await client.query(
+      'UPDATE barber_shops SET rating = $1, updated_at = NOW() WHERE id = $2',
+      [nextRating, shopId]
+    );
+
+    await client.query('COMMIT');
+    res.status(201).json({
+      review: insertRes.rows[0],
+      rating: nextRating,
+      reviewCount,
+    });
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      // ignore
+    }
+    console.error('Error al crear reseña:', error);
+    res.status(500).json({ message: 'Error del servidor al crear reseña' });
+  } finally {
+    client.release();
   }
 };
 

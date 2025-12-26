@@ -40,7 +40,7 @@ export const getUserById = async (req, res) => {
     const { id } = req.params;
     
     const result = await pool.query(`
-      SELECT id, name as nombre, email, phone as telefono, role, whatsapp_link
+      SELECT id, name as nombre, email, phone as telefono, role, whatsapp_link, photo_url
       FROM users
       WHERE id = $1
     `, [id]);
@@ -57,6 +57,133 @@ export const getUserById = async (req, res) => {
   } catch (error) {
     console.error('Error al obtener usuario por ID:', error);
     res.status(500).json({ message: 'Error del servidor al obtener usuario' });
+  }
+};
+
+export const updateUserProfile = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { id } = req.params;
+    const {
+      nombre,
+      name,
+      telefono,
+      phone,
+      photoUrl,
+      photo_url,
+      currentPassword,
+      contrasenaActual
+    } = req.body || {};
+
+    const currentPwd = currentPassword || contrasenaActual;
+
+    if (!currentPwd) {
+      return res.status(400).json({ message: 'Debes ingresar tu contraseña actual para guardar cambios.' });
+    }
+
+    await client.query('BEGIN');
+
+    const existingResult = await client.query('SELECT * FROM users WHERE id = $1', [id]);
+    if (existingResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+
+    const existing = existingResult.rows[0];
+    const ok = await bcrypt.compare(currentPwd, existing.password);
+    if (!ok) {
+      await client.query('ROLLBACK');
+      return res.status(401).json({ message: 'Contraseña actual incorrecta' });
+    }
+
+    const finalName = (nombre || name || existing.name || '').trim();
+    const finalPhone = (telefono || phone || existing.phone || '').trim();
+    const nextPhotoUrl = (photoUrl !== undefined || photo_url !== undefined)
+      ? (photoUrl || photo_url || null)
+      : existing.photo_url;
+
+    const result = await client.query(
+      `UPDATE users
+       SET name = $1,
+           phone = $2,
+           photo_url = $3,
+           updated_at = NOW()
+       WHERE id = $4
+       RETURNING id, uuid, name, email, phone, role, shop_id, photo_url, whatsapp_link, created_at, updated_at`,
+      [finalName, finalPhone, nextPhotoUrl, id]
+    );
+
+    await client.query('COMMIT');
+    res.json(result.rows[0]);
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      // ignore
+    }
+    console.error('Error al actualizar perfil:', error);
+    res.status(500).json({ message: 'Error del servidor al actualizar perfil' });
+  } finally {
+    client.release();
+  }
+};
+
+export const changeUserPassword = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { id } = req.params;
+    const {
+      currentPassword,
+      contrasenaActual,
+      newPassword,
+      nuevaContrasena
+    } = req.body || {};
+
+    const currentPwd = currentPassword || contrasenaActual;
+    const nextPwd = newPassword || nuevaContrasena;
+
+    if (!currentPwd || !nextPwd) {
+      return res.status(400).json({ message: 'Debes enviar contraseña actual y nueva contraseña.' });
+    }
+
+    await client.query('BEGIN');
+
+    const existingResult = await client.query('SELECT id, password FROM users WHERE id = $1', [id]);
+    if (existingResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+
+    const existing = existingResult.rows[0];
+    const ok = await bcrypt.compare(currentPwd, existing.password);
+    if (!ok) {
+      await client.query('ROLLBACK');
+      return res.status(401).json({ message: 'Contraseña actual incorrecta' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(nextPwd, salt);
+
+    await client.query(
+      `UPDATE users
+       SET password = $1,
+           updated_at = NOW()
+       WHERE id = $2`,
+      [hashedPassword, id]
+    );
+
+    await client.query('COMMIT');
+    res.json({ success: true });
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      // ignore
+    }
+    console.error('Error al cambiar contraseña:', error);
+    res.status(500).json({ message: 'Error del servidor al cambiar contraseña' });
+  } finally {
+    client.release();
   }
 };
 
@@ -434,6 +561,8 @@ export const loginUser = async (req, res) => {
       especialidades: user.specialties || [],
       specialties: user.specialties || [],
       shop_id: user.shop_id,
+      photo_url: user.photo_url,
+      photoUrl: user.photo_url,
       whatsapp_link: user.whatsapp_link,
       whatsappLink: user.whatsapp_link
     };
