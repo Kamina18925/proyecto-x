@@ -4,6 +4,25 @@ import BarberShopInfoView from './BarberShopInfoView';
 import Modal from './ui/Modal';
 import api from '../services/apiService';
 
+const SHOP_CATEGORY_OPTIONS = [
+  { key: 'barberia', label: 'Barbería' },
+  { key: 'salon_belleza', label: 'Salón de Belleza' },
+  { key: 'spa_estetica', label: 'Spa / Estética' },
+  { key: 'unas', label: 'Uñas' },
+  { key: 'depilacion', label: 'Depilación' },
+];
+
+const normalizeCategoriesLocal = (raw) => {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    return raw
+      .split(',')
+      .map(v => String(v || '').trim())
+      .filter(Boolean);
+  }
+  return [];
+};
+
 const OwnerBarberShopsManagement = () => {
   const { state, dispatch } = useContext(AppContext);
   const owner = state.currentUser;
@@ -23,7 +42,8 @@ const OwnerBarberShopsManagement = () => {
     instagram: '',
     facebook: '',
     latitude: '',
-    longitude: ''
+    longitude: '',
+    categories: ['barberia']
   });
   const [ownerForm, setOwnerForm] = useState({
     ownerName: '',
@@ -81,6 +101,95 @@ const OwnerBarberShopsManagement = () => {
     .map(shop => shop.city)
     .filter(Boolean))];
 
+  const openUrlInNewTab = (url) => {
+    let newWin = null;
+    try {
+      newWin = window.open('about:blank', '_blank');
+    } catch {
+      newWin = null;
+    }
+
+    if (!newWin || newWin === window) {
+      dispatch({
+        type: 'SHOW_NOTIFICATION',
+        payload: { message: 'El navegador bloqueó la ventana emergente. Permite los popups para abrir el enlace.', type: 'error' }
+      });
+      return false;
+    }
+
+    try {
+      newWin.opener = null;
+    } catch {
+      // ignore
+    }
+
+    try {
+      newWin.location.href = url;
+    } catch {
+      // ignore
+    }
+
+    return true;
+  };
+
+  const handleOpenDirectionsToShop = (shop) => {
+    const address = shop?.address;
+    const sector = shop?.sector;
+    const city = shop?.city;
+    const destination = [address, sector, city].filter(Boolean).join(', ').trim();
+    const shopLat = shop?.latitude ?? shop?.lat ?? shop?.schedule?.latitude ?? shop?.schedule?.lat;
+    const shopLng = shop?.longitude ?? shop?.lng ?? shop?.schedule?.longitude ?? shop?.schedule?.lng;
+
+    if (!destination) {
+      dispatch({
+        type: 'SHOW_NOTIFICATION',
+        payload: { message: 'Este negocio no tiene dirección registrada.', type: 'error' },
+      });
+      return;
+    }
+
+    const destParam = (shopLat != null && shopLng != null && String(shopLat) !== '' && String(shopLng) !== '')
+      ? `${shopLat},${shopLng}`
+      : destination;
+
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destParam)}&travelmode=driving`;
+    openUrlInNewTab(url);
+  };
+
+  const handleOpenWhatsAppToShop = (shop) => {
+    const rawLink = shop?.whatsappLink ?? shop?.schedule?.whatsappLink;
+    const rawPhone = shop?.phone ?? shop?.schedule?.phone;
+
+    const trimmedLink = String(rawLink || '').trim();
+    const trimmedPhone = String(rawPhone || '').trim();
+
+    let url = '';
+    if (trimmedLink) {
+      url = trimmedLink;
+      if (!/^https?:\/\//i.test(url)) {
+        url = `https://${url}`;
+      }
+    } else if (trimmedPhone) {
+      const digitsRaw = trimmedPhone.replace(/\D/g, '');
+      if (digitsRaw) {
+        const digits = (digitsRaw.length === 10 && !digitsRaw.startsWith('1'))
+          ? `1${digitsRaw}`
+          : digitsRaw;
+        url = `https://wa.me/${digits}`;
+      }
+    }
+
+    if (!url) {
+      dispatch({
+        type: 'SHOW_NOTIFICATION',
+        payload: { message: 'Este negocio no tiene WhatsApp configurado.', type: 'error' }
+      });
+      return;
+    }
+
+    openUrlInNewTab(url);
+  };
+
   // Handlers
   const handleOpenAdd = () => {
     setForm({ 
@@ -95,7 +204,8 @@ const OwnerBarberShopsManagement = () => {
       instagram: '',
       facebook: '',
       latitude: '',
-      longitude: ''
+      longitude: '',
+      categories: ['barberia']
     });
     setOwnerForm({
       ownerName: '',
@@ -124,7 +234,12 @@ const OwnerBarberShopsManagement = () => {
       facebook: shop.facebook || '',
       sector: shop.sector || schedule.sector || '',
       latitude: (shop.latitude ?? schedule.latitude ?? schedule.lat ?? '') + '',
-      longitude: (shop.longitude ?? schedule.longitude ?? schedule.lng ?? '') + ''
+      longitude: (shop.longitude ?? schedule.longitude ?? schedule.lng ?? '') + '',
+      categories: (() => {
+        const incoming = shop?.categories ?? schedule?.categories;
+        const arr = normalizeCategoriesLocal(incoming);
+        return arr.length ? arr : ['barberia'];
+      })()
     });
     setSelectedShop(shop);
     setError('');
@@ -176,6 +291,17 @@ const OwnerBarberShopsManagement = () => {
   };
   const handleChange = e => {
     setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
+  const handleToggleCategory = (key) => {
+    setForm(prev => {
+      const current = Array.isArray(prev.categories) ? prev.categories : normalizeCategoriesLocal(prev.categories);
+      const nextSet = new Set(current);
+      if (nextSet.has(key)) nextSet.delete(key);
+      else nextSet.add(key);
+      const next = Array.from(nextSet);
+      return { ...prev, categories: next.length ? next : ['barberia'] };
+    });
   };
 
   const buildShopLocationQuery = (data) => {
@@ -329,7 +455,7 @@ const OwnerBarberShopsManagement = () => {
   };
   // Función handleDelete mejorada
 const handleDelete = (shopId) => {
-    if (confirm(`¿Está seguro que desea eliminar esta barbería?`)) {
+    if (confirm(`¿Está seguro que desea eliminar este negocio?`)) {
       console.log('Ejecutando eliminación:', shopId);
       
       try {
@@ -344,10 +470,10 @@ const handleDelete = (shopId) => {
           setSelectedShop(null);
         }
         
-        alert('Barbería eliminada correctamente');
+        alert('Negocio eliminado correctamente');
       } catch (e) {
         console.error('Error al eliminar:', e);
-        alert('Error al eliminar la barbería');
+        alert('Error al eliminar el negocio');
       }
     }
   };
@@ -430,7 +556,7 @@ const handleDelete = (shopId) => {
     dispatch({
       type: 'SHOW_NOTIFICATION',
       payload: {
-        message: 'Barberos asignados correctamente',
+        message: 'Profesionales asignados correctamente',
         type: 'success'
       }
     });
@@ -453,7 +579,7 @@ const handleDelete = (shopId) => {
     if (owner.shopId && owner.shopId !== shop.id) {
       const previousShop = state.barberShops.find(s => s.id === owner.shopId);
       const confirmMove = window.confirm(
-        `Ya estás asignado como barbero en "${previousShop?.name || 'otra barbería'}".\n\n¿Deseas asignarte ahora a "${shop.name}"?`
+        `Ya estás asignado como profesional en "${previousShop?.name || 'otro negocio'}".\n\n¿Deseas asignarte ahora a "${shop.name}"?`
       );
       if (!confirmMove) return;
     }
@@ -483,7 +609,7 @@ const handleDelete = (shopId) => {
     dispatch({
       type: 'SHOW_NOTIFICATION',
       payload: {
-        message: `Te has marcado como barbero en "${shop.name}". No olvides guardar las asignaciones.`,
+        message: `Te has marcado como profesional en "${shop.name}". No olvides guardar las asignaciones.`,
         type: 'success'
       }
     });
@@ -564,7 +690,7 @@ const handleDelete = (shopId) => {
     dispatch({
       type: 'SHOW_NOTIFICATION',
       payload: {
-        message: 'Servicios por barbero actualizados correctamente',
+        message: 'Servicios por profesional actualizados correctamente',
         type: 'success'
       }
     });
@@ -682,19 +808,24 @@ const handleDelete = (shopId) => {
         photoUrl: saved?.photoUrl || schedule.photoUrl || photoUrl || '',
         latitude: saved?.latitude ?? schedule.latitude ?? schedule.lat ?? payloadToSave.latitude ?? '',
         longitude: saved?.longitude ?? schedule.longitude ?? schedule.lng ?? payloadToSave.longitude ?? '',
+        categories: (() => {
+          const incoming = saved?.categories ?? schedule?.categories ?? payloadToSave.categories;
+          const arr = normalizeCategoriesLocal(incoming);
+          return arr.length ? arr : ['barberia'];
+        })(),
       };
 
       if (isCreating) {
         dispatch({ type: 'ADD_BARBERSHOP', payload: normalizedSaved });
         dispatch({
           type: 'SHOW_NOTIFICATION',
-          payload: { message: 'Barbería añadida correctamente', type: 'success' }
+          payload: { message: 'Negocio añadido correctamente', type: 'success' }
         });
       } else {
         dispatch({ type: 'EDIT_BARBERSHOP', payload: normalizedSaved });
         dispatch({
           type: 'SHOW_NOTIFICATION',
-          payload: { message: 'Barbería actualizada correctamente', type: 'success' }
+          payload: { message: 'Negocio actualizado correctamente', type: 'success' }
         });
       }
       
@@ -727,14 +858,14 @@ const handleDelete = (shopId) => {
   return (
     <div className="bg-white rounded-xl shadow-lg p-8">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-4">
-        <h2 className="text-2xl font-bold text-slate-800">Mis Barberías</h2>
+        <h2 className="text-2xl font-bold text-slate-800">Mis Negocios</h2>
         <button 
           className="bg-green-500 hover:bg-green-600 text-white px-5 py-2 rounded shadow text-sm font-semibold flex items-center" 
           onClick={handleOpenAdd}
           data-action="add"
           data-component-name="OwnerBarberShopsManagement"
         >
-          <i className="fas fa-plus-circle mr-2"></i>Añadir Barbería
+          <i className="fas fa-plus-circle mr-2"></i>Añadir Negocio
         </button>
       </div>
       
@@ -786,30 +917,71 @@ const handleDelete = (shopId) => {
             
             {/* Contenido */}
             <div className="p-5 flex-grow flex flex-col">
-              <div className="flex items-center mb-3">
-                <div className="w-8 h-8 flex items-center justify-center rounded-full bg-indigo-100 text-indigo-500 mr-2">
-                  <i className="fas fa-map-marker-alt"></i>
-                </div>
-                <div>
-                  <div className="text-slate-800 font-medium">{shop.city}</div>
-                  <div className="text-slate-500 text-sm">{shop.address}</div>
-                </div>
+              <div className="mb-3">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleOpenDirectionsToShop(shop);
+                  }}
+                  className="group inline-flex items-start gap-2 text-left"
+                  title="Abrir ruta en Google Maps"
+                >
+                  <svg viewBox="0 0 24 24" className="w-4 h-4 text-red-600 shrink-0 mt-1" fill="currentColor" aria-hidden="true">
+                    <path d="M12 2c3.87 0 7 3.13 7 7 0 5.25-7 13-7 13S5 14.25 5 9c0-3.87 3.13-7 7-7zm0 9.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z" />
+                  </svg>
+                  <span className="text-sm text-slate-700 leading-snug group-hover:underline break-words">
+                    {[shop.address, shop.sector, shop.city].filter(Boolean).join(', ')}
+                  </span>
+                </button>
               </div>
-              
-              <div className="flex items-center mb-3">
-                <div className="w-8 h-8 flex items-center justify-center rounded-full bg-green-100 text-green-500 mr-2">
-                  <i className="fas fa-phone-alt"></i>
-                </div>
-                <div>
-                  <div className="text-slate-800 font-medium">{shop.phone}</div>
-                  <div className="text-slate-500 text-sm">{shop.email || 'Sin email'}</div>
-                </div>
+
+              <div className="mb-3">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleOpenWhatsAppToShop(shop);
+                  }}
+                  className="group inline-flex items-center gap-2 text-left"
+                  title="Abrir WhatsApp"
+                >
+                  <svg viewBox="0 0 32 32" className="w-4 h-4 text-emerald-600 shrink-0" fill="currentColor" aria-hidden="true">
+                    <path d="M19.11 17.45c-.2-.1-1.19-.59-1.38-.65-.18-.07-.32-.1-.46.1-.14.2-.53.65-.65.79-.12.14-.24.16-.44.06-.2-.1-.86-.32-1.64-1.02-.6-.54-1.01-1.2-1.13-1.4-.12-.2-.01-.31.09-.41.09-.09.2-.24.3-.36.1-.12.14-.2.2-.34.06-.14.03-.26-.02-.36-.05-.1-.46-1.11-.63-1.52-.17-.4-.35-.35-.46-.35h-.39c-.14 0-.36.05-.55.26-.2.2-.72.7-.72 1.7 0 1 .74 1.96.84 2.1.1.14 1.46 2.22 3.53 3.11.49.21.88.34 1.18.43.5.16.95.14 1.31.09.4-.06 1.19-.49 1.36-.96.17-.47.17-.87.12-.96-.05-.1-.18-.16-.38-.26z" />
+                    <path d="M16 3C9.37 3 4 8.37 4 15c0 2.34.67 4.54 1.83 6.4L4 29l7.78-1.76C13.55 28.1 14.75 28.5 16 28.5c6.63 0 12-5.37 12-12S22.63 3 16 3zm0 22.5c-1.18 0-2.33-.29-3.36-.84l-.8-.42-4.62 1.05 1-4.5-.52-.83C6.89 18.5 6.5 16.77 6.5 15 6.5 9.76 10.76 5.5 16 5.5S25.5 9.76 25.5 15 21.24 25.5 16 25.5z" />
+                  </svg>
+                  <span className="text-sm font-medium text-slate-800 group-hover:underline">{shop.phone}</span>
+                </button>
+                <div className="ml-6 text-slate-500 text-xs break-all">{shop.email || 'Sin email'}</div>
               </div>
+
+              {(() => {
+                const raw = shop?.categories ?? shop?.schedule?.categories;
+                const cats = normalizeCategoriesLocal(raw);
+                if (!cats.length) return null;
+                return (
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {cats.map(cat => {
+                      const label = SHOP_CATEGORY_OPTIONS.find(o => o.key === cat)?.label || cat;
+                      return (
+                        <span key={cat} className="inline-flex items-center px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-semibold">
+                          {label}
+                        </span>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
               
               {shop.openHours && (
                 <div className="flex items-center mb-3">
                   <div className="w-8 h-8 flex items-center justify-center rounded-full bg-amber-100 text-amber-500 mr-2">
-                    <i className="fas fa-clock"></i>
+                    <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor" aria-hidden="true">
+                      <path d="M12 22a10 10 0 1 1 0-20 10 10 0 0 1 0 20zm0-18a8 8 0 1 0 0 16 8 8 0 0 0 0-16z" />
+                      <path d="M12.75 7a.75.75 0 0 0-1.5 0v5c0 .2.08.39.22.53l3 3a.75.75 0 1 0 1.06-1.06l-2.78-2.78V7z" />
+                    </svg>
                   </div>
                   <div className="text-slate-700">{shop.openHours}</div>
                 </div>
@@ -853,7 +1025,7 @@ const handleDelete = (shopId) => {
                       const inByBarberIds = (shop.barberIds || []).includes(u.id);
                       return inByShopId || inByBarberIds;
                     }).length || 0;
-                  })()} barberos
+                  })()} profesionales
                 </div>
                 <div>
                   <i className="fas fa-calendar-check mr-1"></i>
@@ -880,7 +1052,7 @@ const handleDelete = (shopId) => {
                   <i className="fas fa-trash-alt mr-1"></i>Eliminar
                 </a>
                 <button className="bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1.5 rounded shadow-sm text-xs font-semibold flex items-center justify-center" onClick={() => handleOpenBarberAssign(shop)}>
-                  <i className="fas fa-user-plus mr-1"></i>Asignar Barberos
+                  <i className="fas fa-user-plus mr-1"></i>Asignar Profesionales
                 </button>
                 <button className="bg-slate-700 hover:bg-slate-800 text-white px-3 py-1.5 rounded shadow-sm text-xs font-semibold flex items-center justify-center" onClick={() => setSelectedShop(shop)}>
                   <i className="fas fa-eye mr-1"></i>Ver Detalles
@@ -890,18 +1062,18 @@ const handleDelete = (shopId) => {
                 className="mt-2 bg-purple-500 hover:bg-purple-600 text-white px-3 py-1.5 rounded shadow-sm text-xs font-semibold flex items-center justify-center"
                 onClick={() => handleOpenServicesByBarber(shop)}
               >
-                <i className="fas fa-cut mr-1"></i>Servicios por Barbero
+                <i className="fas fa-cut mr-1"></i>Servicios por Profesional
               </button>
             </div>
           </div>
         ))}
       </div>
       {myShops.length === 0 && (
-        <div className="text-center text-slate-500 py-12">No tienes barberías registradas.</div>
+        <div className="text-center text-slate-500 py-12">No tienes negocios registrados.</div>
       )}
       {/* Modal para añadir/editar barbería */}
       {(showAdd || showEdit) && (
-        <Modal isOpen={showAdd || showEdit} onClose={handleCloseModal} title={showAdd ? 'Añadir Barbería' : 'Editar Barbería'} size="lg">
+        <Modal isOpen={showAdd || showEdit} onClose={handleCloseModal} title={showAdd ? 'Añadir Negocio' : 'Editar Negocio'} size="lg">
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Selector de foto de portada */}
             <div className="mb-6">
@@ -958,7 +1130,7 @@ const handleDelete = (shopId) => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-semibold mb-1">Nombre *</label>
-                <input type="text" name="name" value={form.name} onChange={handleChange} className="w-full p-2 border rounded" placeholder="Nombre de la barbería" />
+                <input type="text" name="name" value={form.name} onChange={handleChange} className="w-full p-2 border rounded" placeholder="Nombre del negocio" />
               </div>
               <div>
                 <label className="block text-sm font-semibold mb-1">Teléfono *</label>
@@ -975,6 +1147,24 @@ const handleDelete = (shopId) => {
                 <label className="block text-sm font-semibold mb-1">Horario</label>
                 <input type="text" name="openHours" value={form.openHours} onChange={handleChange} className="w-full p-2 border rounded" placeholder="Lun-Sab: 9am-7pm" />
               </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold mb-2">Categorías del negocio</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {SHOP_CATEGORY_OPTIONS.map(opt => (
+                  <label key={opt.key} className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={(Array.isArray(form.categories) ? form.categories : []).includes(opt.key)}
+                      onChange={() => handleToggleCategory(opt.key)}
+                      className="h-4 w-4 text-indigo-600 border-slate-300 rounded"
+                    />
+                    {opt.label}
+                  </label>
+                ))}
+              </div>
+              <div className="mt-1 text-xs text-slate-500">Selecciona una o varias categorías para que los clientes puedan encontrarte por filtros.</div>
             </div>
             
             <div>
@@ -1015,7 +1205,7 @@ const handleDelete = (shopId) => {
             
             <div>
               <label className="block text-sm font-semibold mb-1">Descripción</label>
-              <textarea name="description" value={form.description} onChange={handleChange} className="w-full p-2 border rounded" rows="3" placeholder="Breve descripción de la barbería..."></textarea>
+              <textarea name="description" value={form.description} onChange={handleChange} className="w-full p-2 border rounded" rows="3" placeholder="Breve descripción del negocio..."></textarea>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1038,7 +1228,7 @@ const handleDelete = (shopId) => {
             {/* Datos del dueño de la barbería (solo al crear y si es la primera barbería de este dueño) */}
             {showAdd && !ownerHasAnyShop && (
               <div className="mt-4 border-t pt-4">
-                <h3 className="text-md font-semibold text-slate-800 mb-2">Datos del dueño de la barbería</h3>
+                <h3 className="text-md font-semibold text-slate-800 mb-2">Datos del dueño del negocio</h3>
                 <p className="text-xs text-slate-500 mb-3">
                   Estos datos se usarán para crear la cuenta del dueño. Más adelante podrá iniciar sesión con este correo y contraseña.
                 </p>
@@ -1100,7 +1290,7 @@ const handleDelete = (shopId) => {
                     className="h-4 w-4 text-indigo-600 border-slate-300 rounded"
                   />
                   <label htmlFor="ownerIsAlsoBarber" className="text-sm text-slate-700">
-                    El dueño también trabajará como barbero en esta barbería
+                    El dueño también trabajará como profesional en este negocio
                   </label>
                 </div>
               </div>
@@ -1119,21 +1309,21 @@ const handleDelete = (shopId) => {
         <Modal
           isOpen={!!showServicesByBarberShop}
           onClose={() => setShowServicesByBarberShop(null)}
-          title="Servicios por Barbero"
+          title="Servicios por Profesional"
           size="lg"
         >
           <div className="space-y-4">
             <div className="text-sm text-slate-600">
-              Selecciona qué servicios generales ofrece cada barbero de esta barbería.
+              Selecciona qué servicios generales ofrece cada profesional de este negocio.
             </div>
             {(() => {
               const shop = state.barberShops.find(s => s.id === showServicesByBarberShop);
-              if (!shop) return <div className="text-slate-500 text-sm">No se encontró la barbería.</div>;
+              if (!shop) return <div className="text-slate-500 text-sm">No se encontró el negocio.</div>;
 
               // Bloque para crear un servicio exclusivo de esta barbería
               return (
                 <div className="border rounded-lg p-3 bg-slate-50">
-                  <h4 className="text-sm font-semibold text-slate-800 mb-2">Crear servicio exclusivo de esta barbería</h4>
+                  <h4 className="text-sm font-semibold text-slate-800 mb-2">Crear servicio exclusivo de este negocio</h4>
                   {serviceFormError && (
                     <div className="bg-red-50 text-red-600 text-xs p-2 rounded mb-2">{serviceFormError}</div>
                   )}
@@ -1208,7 +1398,7 @@ const handleDelete = (shopId) => {
                         dispatch({
                           type: 'SHOW_NOTIFICATION',
                           payload: {
-                            message: 'Servicio creado para esta barbería',
+                            message: 'Servicio creado para este negocio',
                             type: 'success'
                           }
                         });
@@ -1241,7 +1431,7 @@ const handleDelete = (shopId) => {
               });
 
               if (shopBarbers.length === 0) {
-                return <div className="text-slate-500 text-sm">No hay barberos asignados a esta barbería.</div>;
+                return <div className="text-slate-500 text-sm">No hay profesionales asignados a este negocio.</div>;
               }
 
               if (generalServices.length === 0) {
@@ -1313,7 +1503,7 @@ const handleDelete = (shopId) => {
         <Modal
           isOpen={!!selectedShop}
           onClose={() => setSelectedShop(null)}
-          title="Detalles de la Barbería"
+          title="Detalles del Negocio"
           size="md"
         >
           <BarberShopInfoView shop={selectedShop} />
@@ -1325,26 +1515,26 @@ const handleDelete = (shopId) => {
         <Modal
           isOpen={!!showBarberAssign}
           onClose={() => setShowBarberAssign(null)}
-          title="Asignar Barberos a la Barbería"
+          title="Asignar Profesionales al Negocio"
           size="md"
         >
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
-              Selecciona los barberos que trabajarán en esta barbería. Puedes seleccionar o deseleccionar haciendo clic en cada barbero.
+              Selecciona los profesionales que trabajarán en este negocio. Puedes seleccionar o deseleccionar haciendo clic en cada profesional.
             </p>
 
             {/* Atajo para que el propietario se auto-asigne como barbero usando su perfil existente */}
             {owner && !isAdmin && (
               <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-md text-xs sm:text-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <div className="text-slate-700">
-                  Como propietario, puedes usar tu propio perfil para trabajar como barbero en esta barbería.
+                  Como propietario, puedes usar tu propio perfil para trabajar como profesional en este negocio.
                 </div>
                 <button
                   type="button"
                   className="px-3 py-1.5 bg-indigo-600 text-white rounded text-xs font-semibold hover:bg-indigo-700"
                   onClick={handleOwnerQuickAssignAsBarber}
                 >
-                  Añadirme como barbero aquí
+                  Añadirme como profesional aquí
                 </button>
               </div>
             )}
@@ -1407,7 +1597,7 @@ const handleDelete = (shopId) => {
 
             <div className="flex items-center justify-between mt-6">
               <div className="text-sm text-slate-500">
-                <span className="font-medium">{selectedBarbers.length}</span> barberos seleccionados
+                <span className="font-medium">{selectedBarbers.length}</span> profesionales seleccionados
               </div>
               <div className="flex gap-2">
                 <button

@@ -545,7 +545,7 @@ const BarberAvailabilityManagement = ({ barberId }) => {
         setDayOffLoading(false);
         dispatch({
           type: 'SHOW_NOTIFICATION',
-          payload: { message: 'No se pudo determinar la barbería del barbero.', type: 'error' },
+          payload: { message: 'No se pudo determinar la barbería del profesional.', type: 'error' },
         });
         return;
       }

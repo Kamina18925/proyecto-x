@@ -20,7 +20,8 @@ export const getAllUsers = async (req, res) => {
         can_delete_history,
         shop_id,
         photo_url,
-        whatsapp_link
+        whatsapp_link,
+        gender
       FROM users
       ORDER BY name
     `);
@@ -40,7 +41,7 @@ export const getUserById = async (req, res) => {
     const { id } = req.params;
     
     const result = await pool.query(`
-      SELECT id, name as nombre, email, phone as telefono, role, whatsapp_link, photo_url
+      SELECT id, name as nombre, email, phone as telefono, role, whatsapp_link, photo_url, gender
       FROM users
       WHERE id = $1
     `, [id]);
@@ -208,7 +209,10 @@ export const createUser = async (req, res) => {
       whatsappLink,
       whatsapp_link,
       photoUrl,
-      photo_url
+      photo_url,
+      gender,
+      genero,
+      sexo
     } = req.body;
 
     // Normalizar campos para aceptar tanto español como inglés
@@ -219,6 +223,14 @@ export const createUser = async (req, res) => {
       ? whatsappLink
       : (whatsapp_link !== undefined ? whatsapp_link : null);
     const finalRole = (rol || role || 'client').toLowerCase();
+
+    const rawGender = (gender !== undefined ? gender : (genero !== undefined ? genero : sexo));
+    const normalizedGender = rawGender == null
+      ? null
+      : String(rawGender || '').trim().toLowerCase();
+    const finalGender = (normalizedGender === 'male' || normalizedGender === 'female' || normalizedGender === 'other')
+      ? normalizedGender
+      : null;
     
     // Verificar si el email ya existe
     const emailCheck = await client.query('SELECT * FROM users WHERE email = $1', [email]);
@@ -244,10 +256,11 @@ export const createUser = async (req, res) => {
         phone,
         role,
         photo_url,
-        whatsapp_link
+        whatsapp_link,
+        gender
       ) 
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING id, name as nombre, email, phone as telefono, role, photo_url, whatsapp_link
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING id, name as nombre, email, phone as telefono, role, photo_url, whatsapp_link, gender
     `, [
       finalName,
       email,
@@ -255,7 +268,8 @@ export const createUser = async (req, res) => {
       finalPhone,
       finalRole,
       finalPhotoUrl,
-      finalWhatsappLink != null ? String(finalWhatsappLink) : null
+      finalWhatsappLink != null ? String(finalWhatsappLink) : null,
+      finalGender
     ]);
     
     logDbSuccess('INSERT', `Usuario creado con éxito: ID=${result.rows[0].id}, Nombre=${result.rows[0].nombre}`);
@@ -296,7 +310,10 @@ export const updateUser = async (req, res) => {
       whatsappLink,
       whatsapp_link,
       photoUrl,
-      photo_url
+      photo_url,
+      gender,
+      genero,
+      sexo
     } = req.body;
 
     console.log('updateUser - cuerpo recibido:', req.body);
@@ -335,6 +352,14 @@ export const updateUser = async (req, res) => {
     const finalWhatsappLink = (whatsappLink !== undefined || whatsapp_link !== undefined)
       ? String((whatsappLink !== undefined ? whatsappLink : whatsapp_link) || '')
       : existing.whatsapp_link;
+
+    const rawGender = (gender !== undefined ? gender : (genero !== undefined ? genero : sexo));
+    const normalizedGender = rawGender === undefined
+      ? existing.gender
+      : (rawGender == null ? null : String(rawGender || '').trim().toLowerCase());
+    const finalGender = (normalizedGender === 'male' || normalizedGender === 'female' || normalizedGender === 'other' || normalizedGender == null)
+      ? normalizedGender
+      : existing.gender;
 
     // ShopId: admitir tanto shop_id como shopId y permitir null para "no asignado"
     let finalShopId;
@@ -385,9 +410,10 @@ export const updateUser = async (req, res) => {
         photo_url = $7,
         can_delete_history = $8,
         whatsapp_link = $9,
+        gender = $10,
         updated_at = NOW()
-      WHERE id = $10
-      RETURNING id, uuid, name, email, phone, role, shop_id, photo_url, can_delete_history, whatsapp_link, created_at, updated_at
+      WHERE id = $11
+      RETURNING id, uuid, name, email, phone, role, shop_id, photo_url, can_delete_history, whatsapp_link, gender, created_at, updated_at
     `;
 
     const updateValues = [
@@ -400,6 +426,7 @@ export const updateUser = async (req, res) => {
       finalPhotoUrl,
       finalCanDeleteHistory,
       finalWhatsappLink,
+      finalGender,
       id
     ];
 
@@ -564,7 +591,8 @@ export const loginUser = async (req, res) => {
       photo_url: user.photo_url,
       photoUrl: user.photo_url,
       whatsapp_link: user.whatsapp_link,
-      whatsappLink: user.whatsapp_link
+      whatsappLink: user.whatsapp_link,
+      gender: user.gender
     };
     
     logDbSuccess('RESPUESTA', `Datos de usuario formateados y enviados: ID=${user.id}`);

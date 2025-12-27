@@ -559,7 +559,7 @@ const ChatWidget = () => {
   const roleLabel = (() => {
     const roleRaw = (currentUser?.role || currentUser?.rol || '');
     const role = String(roleRaw).toLowerCase();
-    if (role.includes('client')) return 'Tu Barbero';
+    if (role.includes('client')) return 'Tu Profesional';
     if (role.includes('barber')) return 'Tu Cliente';
     return 'Chat';
   })();

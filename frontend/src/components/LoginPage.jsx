@@ -13,6 +13,7 @@ const RegistrationForm = ({ onRegistered }) => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [role, setRole] = useState('client');
+  const [gender, setGender] = useState('');
   const [loading, setLoading] = useState(false);
   
   const handleSubmit = async (e) => {
@@ -46,7 +47,8 @@ const RegistrationForm = ({ onRegistered }) => {
         email: email,
         telefono: phone,
         password: password,
-        rol: role
+        rol: role,
+        ...(gender ? { gender } : {})
       };
       
       const response = await userApi.register(userData);
@@ -86,7 +88,7 @@ const RegistrationForm = ({ onRegistered }) => {
               onChange={e => setRole(e.target.value)}
               className="h-4 w-4 text-indigo-600 border-slate-300 focus:ring-indigo-500 mr-2"
             />
-            Barbero
+            Profesional
           </label>
           <label className="flex items-center text-sm text-slate-700 cursor-pointer">
             <input
@@ -113,6 +115,21 @@ const RegistrationForm = ({ onRegistered }) => {
       <div>
         <label htmlFor="reg_phone" className="block text-sm font-medium text-slate-700">Teléfono</label>
         <input id="reg_phone" name="phone" type="tel" autoComplete="tel" required value={phone} onChange={e => setPhone(e.target.value)} className="mt-1 block w-full p-2.5 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" placeholder="809-123-4567" />
+      </div>
+      <div>
+        <label htmlFor="reg_gender" className="block text-sm font-medium text-slate-700">Género (opcional)</label>
+        <select
+          id="reg_gender"
+          name="gender"
+          value={gender}
+          onChange={e => setGender(e.target.value)}
+          className="mt-1 block w-full p-2.5 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm bg-white"
+        >
+          <option value="">Prefiero no decir</option>
+          <option value="male">Masculino</option>
+          <option value="female">Femenino</option>
+          <option value="other">Otro</option>
+        </select>
       </div>
       <div>
         <label htmlFor="reg_password" className="block text-sm font-medium text-slate-700">Contraseña</label>

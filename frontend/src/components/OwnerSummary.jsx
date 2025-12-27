@@ -533,7 +533,11 @@ const OwnerSummary = ({ shop, appointments, barbers }) => {
   // Calcular ingresos
   const calculateRevenue = () => {
     return (periodAppointments || [])
-      .filter(a => isCompletedStatus(a?.status))
+      .filter(a => {
+        if (!isCompletedStatus(a?.status)) return false;
+        const st = normalizePaymentStatus(a?.paymentStatus ?? a?.payment_status ?? null);
+        return st !== 'unpaid';
+      })
       .reduce((sum, appointment) => {
         return sum + getAppointmentPrice(appointment);
       }, 0);
@@ -594,7 +598,11 @@ const OwnerSummary = ({ shop, appointments, barbers }) => {
   const prevTotalAppointments = prevPeriodAppointments?.length || 0;
   const prevPendingAppointments = prevPeriodAppointments?.filter(a => String(a?.status || '').trim().toLowerCase() === 'pending').length || 0;
   const prevRevenue = (prevPeriodAppointments || [])
-    .filter(a => isCompletedStatus(a?.status))
+    .filter(a => {
+      if (!isCompletedStatus(a?.status)) return false;
+      const st = normalizePaymentStatus(a?.paymentStatus ?? a?.payment_status ?? null);
+      return st !== 'unpaid';
+    })
     .reduce((sum, appointment) => sum + getAppointmentPrice(appointment), 0);
   
   // Filtrar citas recientes
@@ -746,7 +754,7 @@ const OwnerSummary = ({ shop, appointments, barbers }) => {
         <StatCard 
           icon="user-tie" 
           count={totalBarbers} 
-          label="Barberos Activos" 
+          label="Profesionales Activos" 
           color="indigo" 
           trend={0} 
         />

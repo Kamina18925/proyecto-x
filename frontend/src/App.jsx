@@ -8,7 +8,7 @@ import Modal from './components/Modal';
 import ChatWidget from './components/ChatWidget';
 import { setupImageUploadInterceptor } from './utils/imageUtils';
 import { saveStateToLocalStorage, loadInitialState, saveUser, saveBarberShop, saveService, saveAppointment, saveProduct, cancelAppointment, completeAppointment, markNoShowAppointment, deleteAppointmentsByClientAndStatus, loadNotificationsForUser, loadAppointments, loadProducts, loadUsers } from './services/dataService';
-import { userApi, barberShopApi, serviceApi, productApi, barberAvailabilityApi, barberBreaksApi, barberServicesApi } from './services/apiService';
+import { userApi, barberShopApi, serviceApi, productApi, appointmentApi, barberAvailabilityApi, barberBreaksApi, barberServicesApi } from './services/apiService';
 
 const SESSION_STORAGE_KEY = 'stylex_session_v1';
 
@@ -113,14 +113,22 @@ function appReducer(state, action) {
       // para conservar campos locales como notesBarber.
       let mergedAppointments = incoming.appointments;
       if (Array.isArray(incoming.appointments) && Array.isArray(state.appointments)) {
+        const preserveIfUndefined = (existingValue, incomingValue) => (
+          incomingValue !== undefined ? incomingValue : existingValue
+        );
+
         mergedAppointments = incoming.appointments.map(newAppt => {
           const existing = state.appointments.find(a => a.id === newAppt.id);
           if (!existing) return newAppt;
 
           return {
             ...newAppt,
-            // Conservar notas del barbero si ya existían en memoria
-            notesBarber: existing.notesBarber ?? newAppt.notesBarber,
+            // Conservar campos si el backend no los envía (undefined).
+            notesBarber: preserveIfUndefined(existing.notesBarber, newAppt.notesBarber),
+            paymentMethod: preserveIfUndefined(existing.paymentMethod, newAppt.paymentMethod),
+            paymentStatus: preserveIfUndefined(existing.paymentStatus, newAppt.paymentStatus),
+            paymentMarkedAt: preserveIfUndefined(existing.paymentMarkedAt, newAppt.paymentMarkedAt),
+            paymentMarkedBy: preserveIfUndefined(existing.paymentMarkedBy, newAppt.paymentMarkedBy),
           };
         });
       }
@@ -865,6 +873,36 @@ const createApiDispatch = (dispatch) => {
           break;
         }
         
+        case 'UPDATE_APPOINTMENT_BARBER_NOTES': {
+          const { appointmentId, notesBarber } = action.payload || {};
+          if (appointmentId != null) {
+            const user = window.appState?.currentUser || {};
+            const requesterId = user.id;
+            const requesterRole = user.role || user.rol || '';
+
+            try {
+              const updated = await appointmentApi.updateNotes(
+                appointmentId,
+                { notes: notesBarber, requesterId, requesterRole }
+              );
+
+              dispatch({
+                ...action,
+                payload: {
+                  appointmentId,
+                  notesBarber: updated?.notesBarber || updated?.notes_barber || notesBarber || '',
+                },
+              });
+            } catch (e) {
+              console.warn('No se pudo guardar la nota del barbero en la API (se mantendrá solo en memoria):', e?.message || e);
+              dispatch(action);
+            }
+          } else {
+            dispatch(action);
+          }
+          break;
+        }
+        
         case 'COMPLETE_APPOINTMENT': {
           const idToComplete = action.payload && (action.payload.id ?? action.payload.appointmentId);
           if (idToComplete != null) {
@@ -1399,6 +1437,7 @@ const App = () => {
 
   // POLLING global: volver a sincronizar citas frecuentemente para evitar solapamientos de horarios
   useEffect(() => {
+    if (!state.isAuthenticated) return undefined;
     let cancelled = false;
 
     const pollData = async () => {
@@ -1423,7 +1462,7 @@ const App = () => {
       cancelled = true;
       clearInterval(intervalId);
     };
-  }, []);
+  }, [state.isAuthenticated]);
 
   // POLLING global: refrescar servicios y asignaciones barber<->servicios para reflejar cambios sin recargar
   useEffect(() => {
@@ -1486,6 +1525,7 @@ const App = () => {
 
   // POLLING global: volver a sincronizar productos para que cliente/admin vean cambios sin recargar
   useEffect(() => {
+    if (!state.isAuthenticated) return undefined;
     let cancelled = false;
 
     const pollProducts = async () => {
@@ -1512,7 +1552,7 @@ const App = () => {
       cancelled = true;
       clearInterval(intervalId);
     };
-  }, []);
+  }, [state.isAuthenticated]);
 
   // POLLING global de notificaciones para el usuario logueado (sonido + toast)
   useEffect(() => {

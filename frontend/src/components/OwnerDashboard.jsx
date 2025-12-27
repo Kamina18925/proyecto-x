@@ -16,7 +16,7 @@ const navItems = [
   { key: 'summary', label: 'Resumen General', icon: 'fas fa-home' },
   { key: 'barberShops', label: 'Barberías', icon: 'fas fa-store-alt' },
   { key: 'shopServices', label: 'Servicios Tienda', icon: 'fas fa-cut' },
-  { key: 'manageBarbers', label: 'Gestionar Barberos', icon: 'fas fa-user-tie' },
+  { key: 'manageBarbers', label: 'Gestionar Profesionales', icon: 'fas fa-user-tie' },
   { key: 'shopAppointments', label: 'Citas Tienda', icon: 'fas fa-calendar-check' },
   { key: 'shopProducts', label: 'Productos Tienda', icon: 'fas fa-box-open' }
   ,{ key: 'chatSupervision', label: 'Chats', icon: 'fas fa-comments' }
@@ -26,7 +26,7 @@ const sectionTitles = {
   summary: 'Resumen General',
   barberShops: 'Barberías',
   shopServices: 'Servicios Tienda',
-  manageBarbers: 'Gestionar Barberos',
+  manageBarbers: 'Gestionar Profesionales',
   shopAppointments: 'Citas Tienda',
   shopProducts: 'Productos Tienda',
   chatSupervision: 'Supervisión de Chats',
@@ -425,7 +425,7 @@ const OwnerDashboard = () => {
                 className="inline-flex items-center px-3 py-2 text-sm font-medium rounded-md bg-slate-800 text-slate-100 hover:bg-slate-900 shadow-sm"
               >
                 <i className="fas fa-exchange-alt mr-2"></i>
-                Cambiar a modo Barbero
+                Cambiar a modo Profesional
               </button>
             ) : null}
           </header>

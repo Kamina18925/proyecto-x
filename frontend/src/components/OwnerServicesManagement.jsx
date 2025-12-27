@@ -804,7 +804,7 @@ const OwnerServicesManagement = ({ shop }) => {
             <h3 className="text-lg font-bold mb-4">
               Nuevo Servicio Individual
               <span className="block text-sm font-normal text-slate-500 mt-1">
-                {state.users.find(u => u.id === showAddBarber)?.name || 'Barbero'}
+                {state.users.find(u => u.id === showAddBarber)?.name || 'Profesional'}
               </span>
             </h3>
             {barberFormError && <div className="bg-red-50 text-red-500 p-2 rounded mb-3 text-sm">{barberFormError}</div>}

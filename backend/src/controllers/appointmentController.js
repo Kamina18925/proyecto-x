@@ -98,6 +98,7 @@ export const getAllAppointments = async (req, res) => {
         COALESCE(a.client_reviewed, FALSE) as client_reviewed,
         a.status,
         a.notes,
+        a.notes_barber,
         a.payment_method,
         a.payment_status,
         a.payment_marked_at,
@@ -122,6 +123,76 @@ export const getAllAppointments = async (req, res) => {
   } catch (error) {
     console.error('Error al obtener citas:', error);
     res.status(500).json({ message: 'Error del servidor al obtener citas' });
+  }
+};
+
+export const updateAppointmentBarberNotes = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { id } = req.params;
+    const { notes, notesBarber, notes_barber, requesterId, requesterRole } = req.body || {};
+
+    const finalNotes =
+      notes !== undefined
+        ? notes
+        : (notesBarber !== undefined ? notesBarber : notes_barber);
+
+    const apptRes = await client.query(
+      `SELECT id, barber_id, shop_id
+       FROM appointments
+       WHERE id = $1`,
+      [id]
+    );
+
+    if (apptRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'Cita no encontrada' });
+    }
+
+    const appt = apptRes.rows[0];
+    const role = String(requesterRole || '').toLowerCase();
+    const rid = requesterId != null ? String(requesterId) : null;
+
+    let authorized = false;
+    if (role.includes('admin')) authorized = true;
+    else if (role.includes('barber')) authorized = rid != null && String(appt.barber_id) === rid;
+    else if (role.includes('owner')) {
+      if (rid != null) {
+        const ownRes = await client.query(
+          `SELECT 1
+           FROM barber_shops bs
+           WHERE bs.id = $1 AND bs.owner_id = $2
+           LIMIT 1`,
+          [appt.shop_id, rid]
+        );
+        authorized = ownRes.rows.length > 0;
+      }
+    }
+
+    if (!authorized) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ message: 'No autorizado para actualizar notas de esta cita' });
+    }
+
+    const result = await client.query(
+      `UPDATE appointments
+       SET notes_barber = $1,
+           updated_at = NOW()
+       WHERE id = $2
+       RETURNING id, date, actual_end_time, status, notes, notes_barber, client_id, barber_id, shop_id, service_id, payment_method, payment_status, payment_marked_at, payment_marked_by`,
+      [finalNotes ?? null, id]
+    );
+
+    await client.query('COMMIT');
+    return res.json(result.rows[0]);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error al actualizar notas del barbero:', error);
+    return res.status(500).json({ message: 'Error del servidor al actualizar notas del barbero' });
+  } finally {
+    client.release();
   }
 };
 
@@ -368,8 +439,10 @@ export const getAppointmentsByClient = async (req, res) => {
         a.date,
         a.actual_end_time,
         a.hidden_for_client,
+        COALESCE(a.client_reviewed, FALSE) as client_reviewed,
         a.status,
         a.notes,
+        a.notes_barber,
         a.payment_method,
         a.payment_status,
         a.payment_marked_at,

@@ -89,7 +89,7 @@ const BarberShopInfoView = ({ shop }) => {
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-slate-50 p-4 rounded-lg text-center">
                 <div className="text-3xl font-bold text-indigo-500 mb-1">{barbers.length}</div>
-                <div className="text-slate-600 text-sm">Barberos</div>
+                <div className="text-slate-600 text-sm">Profesionales</div>
               </div>
               
               <div className="bg-slate-50 p-4 rounded-lg text-center">
@@ -161,7 +161,7 @@ const BarberShopInfoView = ({ shop }) => {
         <div>
           <h3 className="text-lg font-semibold text-slate-700 mb-2 flex items-center">
             <i className="fas fa-user-tie mr-2 text-indigo-500"></i>
-            Barberos en esta barbería
+            Profesionales en este negocio
           </h3>
           
           {barbers.length > 0 ? (
@@ -182,7 +182,7 @@ const BarberShopInfoView = ({ shop }) => {
               ))}
             </div>
           ) : (
-            <p className="text-slate-500 italic">No hay barberos asignados a esta barbería.</p>
+            <p className="text-slate-500 italic">No hay profesionales asignados a este negocio.</p>
           )}
         </div>
       </div>

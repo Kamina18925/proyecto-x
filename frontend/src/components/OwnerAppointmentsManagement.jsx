@@ -5,10 +5,31 @@ import Modal from './ui/Modal';
 const OwnerAppointmentsManagement = () => {
   const { state } = useContext(AppContext);
   const owner = state.currentUser;
-  const [filter, setFilter] = useState('all'); // 'all', 'pending', 'completed', 'cancelled'
+  const [filter, setFilter] = useState('all'); // 'all', 'confirmed', 'pending', 'completed', 'cancelled', 'no_show', 'unpaid'
   const [search, setSearch] = useState('');
   const [selectedShop, setSelectedShop] = useState('all');
   const [showAllForShopId, setShowAllForShopId] = useState(null);
+
+  const normalizeStatus = (status) => String(status || '').trim().toLowerCase();
+
+  const isStatusMatch = (filterValue, apptStatus) => {
+    const s = normalizeStatus(apptStatus);
+    if (filterValue === 'confirmed') return s === 'confirmed' || s === 'confirmada' || s === 'confirmado' || s.startsWith('confirm');
+    if (filterValue === 'pending') return s === 'pending' || s === 'pendiente';
+    if (filterValue === 'completed') return s === 'completed' || s === 'completada' || s === 'completado' || s.startsWith('complet');
+    if (filterValue === 'cancelled') return s === 'cancelled' || s === 'cancelada' || s === 'cancelado' || s.startsWith('cancel');
+    if (filterValue === 'no_show') return s === 'no_show' || s === 'no-show' || s === 'noshow';
+    return s === String(filterValue || '').trim().toLowerCase();
+  };
+
+  const normalizePaymentStatus = (st) => {
+    const s = String(st || '').trim().toLowerCase();
+    if (!s) return null;
+    if (s === 'paid' || s === 'pagado') return 'paid';
+    if (s === 'unpaid' || s === 'no_paid' || s === 'no_payo' || s === 'no_pagado' || s === 'no pago') return 'unpaid';
+    if (s === 'pending' || s === 'pendiente') return 'pending';
+    return null;
+  };
 
   // Obtener todas las barberías visibles para este usuario
   const isAdmin = ((owner?.role || owner?.rol || '') + '').toLowerCase().includes('admin');
@@ -31,8 +52,13 @@ const OwnerAppointmentsManagement = () => {
     }
     
     // Filtro por estado
-    if (filter !== 'all' && appointment.status !== filter) {
-      return false;
+    if (filter !== 'all') {
+      if (filter === 'unpaid') {
+        const paymentStatus = normalizePaymentStatus(appointment?.paymentStatus ?? appointment?.payment_status ?? null);
+        if (paymentStatus !== 'unpaid') return false;
+      } else if (!isStatusMatch(filter, appointment.status)) {
+        return false;
+      }
     }
     
     // Filtro por búsqueda (nombre de cliente, barbero, servicio)
@@ -78,23 +104,23 @@ const OwnerAppointmentsManagement = () => {
 
   // Función para obtener el color de estado
   const getStatusColor = (status) => {
-    switch (status) {
-      case 'confirmed': return 'bg-green-100 text-green-800';
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'cancelled': return 'bg-red-100 text-red-800';
-      case 'completed': return 'bg-blue-100 text-blue-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
+    const s = normalizeStatus(status);
+    if (s === 'confirmed' || s === 'confirmada' || s === 'confirmado' || s.startsWith('confirm')) return 'bg-green-100 text-green-800';
+    if (s === 'pending' || s === 'pendiente') return 'bg-yellow-100 text-yellow-800';
+    if (s === 'cancelled' || s === 'cancelada' || s === 'cancelado' || s.startsWith('cancel')) return 'bg-red-100 text-red-800';
+    if (s === 'completed' || s === 'completada' || s === 'completado' || s.startsWith('complet')) return 'bg-blue-100 text-blue-800';
+    if (s === 'no_show' || s === 'no-show' || s === 'noshow') return 'bg-amber-100 text-amber-800';
+    return 'bg-gray-100 text-gray-800';
   };
 
   const getStatusText = (status) => {
-    switch (status) {
-      case 'confirmed': return 'Confirmada';
-      case 'pending': return 'Pendiente';
-      case 'cancelled': return 'Cancelada';
-      case 'completed': return 'Completada';
-      default: return status;
-    }
+    const s = normalizeStatus(status);
+    if (s === 'confirmed' || s === 'confirmada' || s === 'confirmado' || s.startsWith('confirm')) return 'Confirmada';
+    if (s === 'pending' || s === 'pendiente') return 'Pendiente';
+    if (s === 'cancelled' || s === 'cancelada' || s === 'cancelado' || s.startsWith('cancel')) return 'Cancelada';
+    if (s === 'completed' || s === 'completada' || s === 'completado' || s.startsWith('complet')) return 'Completada';
+    if (s === 'no_show' || s === 'no-show' || s === 'noshow') return 'No asistió';
+    return status;
   };
 
   return (
@@ -123,11 +149,13 @@ const OwnerAppointmentsManagement = () => {
             <option value="pending">Pendientes</option>
             <option value="completed">Completadas</option>
             <option value="cancelled">Canceladas</option>
+            <option value="no_show">No asistieron</option>
+            <option value="unpaid">No pagadas</option>
           </select>
           
           <input
             type="text"
-            placeholder="Buscar por cliente, barbero..."
+            placeholder="Buscar por cliente, profesional..."
             className="border border-slate-300 rounded-md px-3 py-2 text-sm"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -210,7 +238,7 @@ const OwnerAppointmentsManagement = () => {
       
       <div className="mt-6 border-t border-slate-200 pt-6">
         <h3 className="text-lg font-semibold text-slate-700 mb-3">Resumen de Citas</h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
           <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
             <div className="text-3xl font-bold text-blue-700 mb-1">
               {filteredAppointments.length}
@@ -220,23 +248,37 @@ const OwnerAppointmentsManagement = () => {
           
           <div className="bg-green-50 rounded-lg p-4 border border-green-100">
             <div className="text-3xl font-bold text-green-700 mb-1">
-              {filteredAppointments.filter(a => a.status === 'confirmed').length}
+              {filteredAppointments.filter(a => isStatusMatch('confirmed', a?.status)).length}
             </div>
             <div className="text-sm text-green-600">Confirmadas</div>
           </div>
           
           <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-100">
             <div className="text-3xl font-bold text-yellow-700 mb-1">
-              {filteredAppointments.filter(a => a.status === 'pending').length}
+              {filteredAppointments.filter(a => isStatusMatch('pending', a?.status)).length}
             </div>
             <div className="text-sm text-yellow-600">Pendientes</div>
           </div>
           
           <div className="bg-red-50 rounded-lg p-4 border border-red-100">
             <div className="text-3xl font-bold text-red-700 mb-1">
-              {filteredAppointments.filter(a => a.status === 'cancelled').length}
+              {filteredAppointments.filter(a => isStatusMatch('cancelled', a?.status)).length}
             </div>
             <div className="text-sm text-red-600">Canceladas</div>
+          </div>
+
+          <div className="bg-amber-50 rounded-lg p-4 border border-amber-100">
+            <div className="text-3xl font-bold text-amber-700 mb-1">
+              {filteredAppointments.filter(a => isStatusMatch('no_show', a?.status)).length}
+            </div>
+            <div className="text-sm text-amber-600">No asistieron</div>
+          </div>
+
+          <div className="bg-rose-50 rounded-lg p-4 border border-rose-100">
+            <div className="text-3xl font-bold text-rose-700 mb-1">
+              {filteredAppointments.filter(a => normalizePaymentStatus(a?.paymentStatus ?? a?.payment_status ?? null) === 'unpaid').length}
+            </div>
+            <div className="text-sm text-rose-600">No pagadas</div>
           </div>
         </div>
       </div>

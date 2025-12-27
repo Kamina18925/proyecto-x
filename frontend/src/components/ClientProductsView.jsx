@@ -55,7 +55,7 @@ const ClientProductsView = ({ onBack }) => {
     if (normalized == null) return 'Tienda';
     const users = Array.isArray(state.users) ? state.users : [];
     const barber = users.find(u => String(u?.id) === String(normalized));
-    return barber ? barber.name : 'Barbero';
+    return barber ? barber.name : 'Profesional';
   };
 
   // Función para obtener el nombre de la barbería
@@ -95,7 +95,7 @@ const ClientProductsView = ({ onBack }) => {
       dispatch({
         type: 'SHOW_NOTIFICATION',
         payload: {
-          message: 'No se pudo abrir la conversación con el barbero.',
+          message: 'No se pudo abrir la conversación con el profesional.',
           type: 'error',
         },
       });
@@ -339,7 +339,7 @@ const ClientProductsView = ({ onBack }) => {
                           dispatch({
                             type: 'SHOW_NOTIFICATION',
                             payload: {
-                              message: 'No hay barberos disponibles en esta barbería para contactar.',
+                              message: 'No hay profesionales disponibles en esta barbería para contactar.',
                               type: 'error',
                             },
                           });
@@ -355,7 +355,7 @@ const ClientProductsView = ({ onBack }) => {
                         dispatch({
                           type: 'SHOW_NOTIFICATION',
                           payload: {
-                            message: 'No se pudo enviar el mensaje al barbero.',
+                            message: 'No se pudo enviar el mensaje al profesional.',
                             type: 'error',
                           },
                         });
@@ -390,7 +390,7 @@ const ClientProductsView = ({ onBack }) => {
       <Modal
         isOpen={selectBarberOpen}
         onClose={closeSelectBarberModal}
-        title={selectBarberProduct ? `¿Con qué barbero deseas comprar?` : 'Selecciona barbero'}
+        title={selectBarberProduct ? `¿Con qué profesional deseas comprar?` : 'Selecciona profesional'}
         size="md"
       >
         {selectBarberProduct && selectBarberShopId != null && (
@@ -402,7 +402,7 @@ const ClientProductsView = ({ onBack }) => {
             </div>
 
             <div>
-              <div className="text-sm font-semibold text-slate-800 mb-2">Selecciona un barbero</div>
+              <div className="text-sm font-semibold text-slate-800 mb-2">Selecciona un profesional</div>
               <ul className="flex flex-wrap gap-3">
                 {getBarbersForShop(selectBarberShopId).map((barb) => (
                   <li key={barb.id}>
@@ -423,7 +423,7 @@ const ClientProductsView = ({ onBack }) => {
                 ))}
               </ul>
               {selectBarberId == null && (
-                <p className="text-xs text-red-600 mt-2">Debes elegir un barbero para continuar.</p>
+                <p className="text-xs text-red-600 mt-2">Debes elegir un profesional para continuar.</p>
               )}
             </div>
 
@@ -451,11 +451,11 @@ const ClientProductsView = ({ onBack }) => {
                     });
                     closeSelectBarberModal();
                   } catch (e) {
-                    console.error('Error enviando mensaje al barbero seleccionado:', e);
+                    console.error('Error enviando mensaje al profesional seleccionado:', e);
                     dispatch({
                       type: 'SHOW_NOTIFICATION',
                       payload: {
-                        message: 'No se pudo enviar el mensaje al barbero.',
+                        message: 'No se pudo enviar el mensaje al profesional.',
                         type: 'error',
                       },
                     });

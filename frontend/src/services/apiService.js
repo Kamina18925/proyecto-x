@@ -6,6 +6,14 @@ const API_BASE_URL =
       ? 'http://localhost:3000/api'
       : 'https://barber-backend-l519.onrender.com/api');
 
+const REQUEST_TIMEOUT_MS =
+  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_TIMEOUT_MS)
+    ? Number(import.meta.env.VITE_API_TIMEOUT_MS)
+    : 12000;
+
+const DEBUG_API =
+  (typeof import.meta !== 'undefined' && import.meta.env && String(import.meta.env.VITE_DEBUG_API || '').toLowerCase() === 'true');
+
 // Función auxiliar para manejar errores de fetch
 const handleFetchError = async (response) => {
   if (!response.ok) {
@@ -21,37 +29,36 @@ const handleFetchError = async (response) => {
 // Función auxiliar para realizar peticiones HTTP
 const fetchWithErrorHandling = async (url, options = {}) => {
   try {
-    // Modo de depuración para ver qué se está enviando
-    console.log('Enviando petición a:', url);
-    console.log('Método:', options.method || 'GET');
-    console.log('Datos enviados:', options.body ? JSON.parse(options.body) : 'Sin datos');
-    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+    if (DEBUG_API) {
+      try {
+        console.log('Enviando petición a:', url);
+        console.log('Método:', options.method || 'GET');
+        console.log('Datos enviados:', options.body ? JSON.parse(options.body) : 'Sin datos');
+      } catch {
+        // ignore
+      }
+    }
+
     const response = await fetch(url, {
       ...options,
+      signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
         ...options.headers,
       },
     });
-    
-    // Depuración de respuesta
-    console.log('Respuesta recibida. Status:', response.status);
-    const responseClone = response.clone();
-    let responseData;
-    try {
-      responseData = await responseClone.text();
-      console.log('Respuesta del servidor:', responseData ? JSON.parse(responseData) : 'Sin contenido');
-    } catch (e) {
-      console.log('No se pudo leer la respuesta como JSON:', responseData);
-    }
-    
+
+    clearTimeout(timeoutId);
+
     await handleFetchError(response);
-    
-    // Para peticiones DELETE que pueden no devolver contenido
+
     if (response.status === 204) {
       return { success: true };
     }
-    
+
     return await response.json();
   } catch (error) {
     console.error(`Error en petición a ${url}:`, error);
@@ -242,6 +249,12 @@ export const appointmentApi = {
 
   updatePayment: (id, data) =>
     fetchWithErrorHandling(`${API_BASE_URL}/appointments/${id}/payment`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  updateNotes: (id, data) =>
+    fetchWithErrorHandling(`${API_BASE_URL}/appointments/${id}/notes`, {
       method: 'PUT',
       body: JSON.stringify(data),
     }),

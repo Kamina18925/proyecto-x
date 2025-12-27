@@ -237,11 +237,31 @@ const BarberAppointmentsView = ({ barber, shop }) => {
 
   const ClientBehaviorModalContent = ({ clientId }) => {
     const { state: appState } = useContext(AppContext);
+    const [selectedCategory, setSelectedCategory] = useState('all');
     const [selectedBarberId, setSelectedBarberId] = useState(barber?.id != null ? String(barber.id) : 'all');
     const [isBarberMenuOpen, setIsBarberMenuOpen] = useState(false);
     const [isNotesOpen, setIsNotesOpen] = useState(false);
     const nowMs = Date.now();
     const windowStartMs = nowMs - (90 * 24 * 60 * 60 * 1000);
+
+    const normalizeCategoryKey = (value) => String(value || '').trim().toLowerCase();
+    const CATEGORY_ORDER = ['barberia', 'salon_belleza', 'unas', 'spa_estetica', 'depilacion'];
+    const getCategoryLabel = (key) => {
+      switch (normalizeCategoryKey(key)) {
+        case 'barberia':
+          return 'Barbería';
+        case 'salon_belleza':
+          return 'Salón';
+        case 'unas':
+          return 'Uñas';
+        case 'spa_estetica':
+          return 'Spa/Estética';
+        case 'depilacion':
+          return 'Depilación';
+        default:
+          return key;
+      }
+    };
 
     const apptsForClient = useMemo(() => {
       const appts = Array.isArray(appState.appointments) ? appState.appointments : [];
@@ -257,9 +277,65 @@ const BarberAppointmentsView = ({ barber, shop }) => {
       });
     }, [appState.appointments, clientId, shop?.id]);
 
+    const categoriesInHistory = useMemo(() => {
+      const shops = Array.isArray(appState.barberShops) ? appState.barberShops : [];
+      const shopById = new Map();
+      shops.forEach((s) => {
+        const id = s?.id;
+        if (id == null) return;
+        shopById.set(String(id), s);
+      });
+
+      const set = new Set();
+      for (const appt of apptsForClient) {
+        const apptShopId = appt?.shopId ?? appt?.shop_id ?? null;
+        if (apptShopId == null) continue;
+        const s = shopById.get(String(apptShopId));
+        const cats = s?.categories || s?.categorias;
+        if (!Array.isArray(cats)) continue;
+        cats.forEach((c) => {
+          const key = normalizeCategoryKey(c);
+          if (key) set.add(key);
+        });
+      }
+
+      const list = Array.from(set);
+      list.sort((a, b) => {
+        const ia = CATEGORY_ORDER.indexOf(a);
+        const ib = CATEGORY_ORDER.indexOf(b);
+        if (ia === -1 && ib === -1) return a.localeCompare(b);
+        if (ia === -1) return 1;
+        if (ib === -1) return -1;
+        return ia - ib;
+      });
+      return list;
+    }, [apptsForClient, appState.barberShops]);
+
+    const apptsForCategory = useMemo(() => {
+      if (selectedCategory === 'all') return apptsForClient;
+
+      const shops = Array.isArray(appState.barberShops) ? appState.barberShops : [];
+      const shopById = new Map();
+      shops.forEach((s) => {
+        const id = s?.id;
+        if (id == null) return;
+        shopById.set(String(id), s);
+      });
+
+      const key = normalizeCategoryKey(selectedCategory);
+      return apptsForClient.filter((appt) => {
+        const apptShopId = appt?.shopId ?? appt?.shop_id ?? null;
+        if (apptShopId == null) return false;
+        const s = shopById.get(String(apptShopId));
+        const cats = s?.categories || s?.categorias;
+        if (!Array.isArray(cats)) return false;
+        return cats.some((c) => normalizeCategoryKey(c) === key);
+      });
+    }, [apptsForClient, appState.barberShops, selectedCategory]);
+
     const barbersInHistory = useMemo(() => {
       const byId = new Map();
-      for (const appt of apptsForClient) {
+      for (const appt of apptsForCategory) {
         const bid = appt?.barberId ?? appt?.barber_id ?? null;
         if (bid == null) continue;
         const startRaw = appt?.startTime || appt?.date || appt?.start_time || null;
@@ -275,7 +351,7 @@ const BarberAppointmentsView = ({ barber, shop }) => {
           const u = (Array.isArray(appState.users) ? appState.users : []).find((x) => String(x?.id) === String(row.barberId));
           return {
             barberId: row.barberId,
-            name: getUserDisplayName(u) || `Barbero ${row.barberId}`,
+            name: getUserDisplayName(u) || `Profesional ${row.barberId}`,
             lastMs: row.lastMs,
           };
         })
@@ -289,10 +365,10 @@ const BarberAppointmentsView = ({ barber, shop }) => {
         current,
         rest,
       };
-    }, [apptsForClient, appState.users, barber?.id]);
+    }, [apptsForCategory, appState.users, barber?.id]);
 
     const apptsForSelection = useMemo(() => {
-      const filtered = apptsForClient.filter((appt) => {
+      const filtered = apptsForCategory.filter((appt) => {
         if (selectedBarberId === 'all') return true;
         const bid = appt?.barberId ?? appt?.barber_id ?? null;
         if (bid == null) return false;
@@ -307,7 +383,7 @@ const BarberAppointmentsView = ({ barber, shop }) => {
         })
         .filter((row) => row.ms != null)
         .sort((a, b) => (b.ms || 0) - (a.ms || 0));
-    }, [apptsForClient, selectedBarberId]);
+    }, [apptsForCategory, selectedBarberId]);
 
     const notesForSelection = useMemo(() => {
       return apptsForSelection
@@ -337,6 +413,7 @@ const BarberAppointmentsView = ({ barber, shop }) => {
       let cancelled = 0;
       let noShow = 0;
       let completed = 0;
+      let unpaid = 0;
 
       for (const row of apptsForSelection) {
         const appt = row.appt;
@@ -348,16 +425,19 @@ const BarberAppointmentsView = ({ barber, shop }) => {
         if (isCancelledStatus(appt?.status)) cancelled += 1;
         else if (isNoShowStatus(appt?.status)) noShow += 1;
         else if (isCompletedStatus(appt?.status)) completed += 1;
+
+        const paymentStatus = normalizePaymentStatus(appt?.paymentStatus ?? appt?.payment_status ?? null);
+        if (paymentStatus === 'unpaid') unpaid += 1;
       }
 
-      return { total, cancelled, noShow, completed };
+      return { total, cancelled, noShow, completed, unpaid };
     }, [apptsForSelection, windowStartMs, nowMs]);
 
     const selectionLabel = useMemo(() => {
-      if (selectedBarberId === 'all') return 'Todos los barberos';
+      if (selectedBarberId === 'all') return 'Todos los profesionales';
       const allUsers = Array.isArray(appState.users) ? appState.users : [];
       const u = allUsers.find((x) => String(x?.id) === String(selectedBarberId));
-      const name = getUserDisplayName(u) || 'Barbero';
+      const name = getUserDisplayName(u) || 'Profesional';
       return getFirstName(name) || name;
     }, [selectedBarberId, barber?.id, appState.users]);
 
@@ -374,6 +454,37 @@ const BarberAppointmentsView = ({ barber, shop }) => {
         <div className="text-sm text-slate-700">
           <div className="font-semibold text-slate-900">Últimos 90 días</div>
           <div className="text-xs text-slate-500 mt-1">Mostrando: <span className="font-semibold">{selectionLabel}</span></div>
+
+          {categoriesInHistory.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2 items-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedCategory('all');
+                  setSelectedBarberId('all');
+                  setIsBarberMenuOpen(false);
+                }}
+                className={`px-3 py-1 rounded-full text-xs font-bold border ${selectedCategory === 'all' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}`}
+              >
+                Todas las áreas
+              </button>
+
+              {categoriesInHistory.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => {
+                    setSelectedCategory(cat);
+                    setSelectedBarberId('all');
+                    setIsBarberMenuOpen(false);
+                  }}
+                  className={`px-3 py-1 rounded-full text-xs font-bold border ${String(selectedCategory) === String(cat) ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}`}
+                >
+                  {getCategoryLabel(cat)}
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className="mt-3 flex gap-2 items-center pb-1 relative">
             <button
@@ -393,7 +504,7 @@ const BarberAppointmentsView = ({ barber, shop }) => {
                 onClick={() => setIsBarberMenuOpen((v) => !v)}
                 className={`px-3 py-1 rounded-full text-xs font-bold border ${selectedBarberId !== 'all' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}`}
               >
-                Barberos{selectedBarberName ? `: ${selectedBarberName}` : ''}
+                Profesionales{selectedBarberName ? `: ${selectedBarberName}` : ''}
               </button>
 
               {isBarberMenuOpen && (
@@ -424,8 +535,8 @@ const BarberAppointmentsView = ({ barber, shop }) => {
               type="button"
               onClick={() => setIsNotesOpen((v) => !v)}
               className={`ml-1 p-2 rounded-md border ${isNotesOpen ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}`}
-              title="Notas de barberos"
-              aria-label="Notas de barberos"
+              title="Notas internas"
+              aria-label="Notas internas"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M7 7h10M7 11h10M7 15h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -434,7 +545,7 @@ const BarberAppointmentsView = ({ barber, shop }) => {
             </button>
           </div>
 
-          <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="mt-3 grid grid-cols-2 sm:grid-cols-5 gap-2">
             <div className="bg-slate-50 rounded-md p-2">
               <div className="text-xs text-slate-500">Citas</div>
               <div className="font-bold text-slate-800">{stats.total}</div>
@@ -447,6 +558,10 @@ const BarberAppointmentsView = ({ barber, shop }) => {
               <div className="text-xs text-slate-500">No asistió</div>
               <div className="font-bold text-amber-700">{stats.noShow}</div>
             </div>
+            <div className="bg-rose-50 rounded-md p-2">
+              <div className="text-xs text-slate-500">No pagó</div>
+              <div className="font-bold text-rose-700">{stats.unpaid}</div>
+            </div>
             <div className="bg-green-50 rounded-md p-2">
               <div className="text-xs text-slate-500">Completadas</div>
               <div className="font-bold text-green-700">{stats.completed}</div>
@@ -456,7 +571,7 @@ const BarberAppointmentsView = ({ barber, shop }) => {
           {isNotesOpen && (
             <div className="mt-3 border border-slate-200 rounded-md bg-white">
               <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between">
-                <div className="text-sm font-semibold text-slate-900">Notas de barberos</div>
+                <div className="text-sm font-semibold text-slate-900">Notas internas</div>
                 <button
                   type="button"
                   onClick={() => setIsNotesOpen(false)}
@@ -477,25 +592,23 @@ const BarberAppointmentsView = ({ barber, shop }) => {
                     const pillClass = getStatusPillClass(n.status);
 
                     return (
-                      <details key={`${n.appointmentId}-${n.ms}`} className="px-3 py-2 border-b border-slate-100">
-                        <summary className="cursor-pointer select-none">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="text-sm text-slate-700">
-                              <div>
-                                {d.toLocaleDateString('es-DO', { timeZone: 'America/Santo_Domingo', year: 'numeric', month: 'short', day: 'numeric' })}
-                                {' · '}
-                                {d.toLocaleTimeString('es-DO', { timeZone: 'America/Santo_Domingo', hour: '2-digit', minute: '2-digit', hour12: true })}
-                              </div>
-                              {showBarberName && (
-                                <div className="text-xs text-slate-500">Barbero: {n.barberName}</div>
-                              )}
+                      <div key={`${n.appointmentId}-${n.ms}`} className="px-3 py-2 border-b border-slate-100">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="text-sm text-slate-700">
+                            <div>
+                              {d.toLocaleDateString('es-DO', { timeZone: 'America/Santo_Domingo', year: 'numeric', month: 'short', day: 'numeric' })}
+                              {' · '}
+                              {d.toLocaleTimeString('es-DO', { timeZone: 'America/Santo_Domingo', hour: '2-digit', minute: '2-digit', hour12: true })}
                             </div>
-                            <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wide ${pillClass}`}>{label}</span>
+                            {showBarberName && (
+                              <div className="text-xs text-slate-500">Profesional: {n.barberName}</div>
+                            )}
                           </div>
-                        </summary>
+                          <span className={`shrink-0 px-2 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wide ${pillClass}`}>{label}</span>
+                        </div>
 
                         <div className="mt-2 text-sm text-slate-700 whitespace-pre-wrap">{n.note}</div>
-                      </details>
+                      </div>
                     );
                   })}
                 </div>
@@ -529,7 +642,7 @@ const BarberAppointmentsView = ({ barber, shop }) => {
                         {d.toLocaleTimeString('es-DO', { timeZone: 'America/Santo_Domingo', hour: '2-digit', minute: '2-digit', hour12: true })}
                       </div>
                       {showBarberName && barberName && (
-                        <div className="text-xs text-slate-500">Barbero: {barberName}</div>
+                        <div className="text-xs text-slate-500">Profesional: {barberName}</div>
                       )}
                     </div>
                     <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wide ${pillClass}`}>{label}</span>
@@ -675,31 +788,6 @@ const BarberAppointmentsView = ({ barber, shop }) => {
       console.error('No se pudo abrir historial de comportamiento del cliente:', e);
     }
   };
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const refresh = async () => {
-      try {
-        const refreshed = await api.appointments.getAll();
-        if (cancelled || !Array.isArray(refreshed)) return;
-        dispatch({ type: 'SET_ALL_DATA', payload: { appointments: normalizeAppointmentsFromApi(refreshed) } });
-      } catch (e) {
-        console.error('Error refrescando citas (barbero):', e);
-      }
-    };
-
-    // Refetch inicial al entrar a Mis Citas
-    refresh();
-
-    // Polling silencioso mientras el barbero está en esta pantalla
-    const intervalId = setInterval(refresh, 3_000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(intervalId);
-    };
-  }, [barber?.id, shop?.id]);
 
   // Abrir chat enfocado en una cita concreta
   const handleOpenChatForAppointment = (appointmentId) => {
@@ -883,12 +971,15 @@ const BarberAppointmentsView = ({ barber, shop }) => {
         content: (
           <div className="p-4">
             <h3 className="text-lg font-semibold mb-2">Editar Notas</h3>
+            <p className="text-sm text-slate-600 mb-3">
+              Estas notas son internas y se usan para dar mejor seguimiento al cliente.
+            </p>
             <textarea
               className="w-full p-2 border border-slate-300 rounded-md mb-4"
               rows="3"
               defaultValue={appointment.notesBarber || ''}
               id="barberNotes"
-              placeholder="Añade tus notas aquí..."
+              placeholder="Escribe observaciones relevantes (preferencias, alergias, detalles del servicio, acuerdos de pago, etc.)"
             ></textarea>
             <div className="flex justify-end space-x-3">
               <button
@@ -909,7 +1000,7 @@ const BarberAppointmentsView = ({ barber, shop }) => {
             </div>
           </div>
         ),
-        props: { title: 'Notas del Barbero' }
+        props: { title: 'Notas internas de la cita' }
       }
     });
   };
@@ -1105,6 +1196,12 @@ const BarberAppointmentsView = ({ barber, shop }) => {
                       startTime: a.startTime || a.date || null,
                       status: a.status || 'confirmed',
                       notes: a.notes || null,
+                      notesBarber: a.notesBarber !== undefined ? a.notesBarber : (a.notes_barber !== undefined ? a.notes_barber : null),
+                      actualEndTime: a.actualEndTime || a.actual_end_time || null,
+                      paymentMethod: a.paymentMethod || a.payment_method || null,
+                      paymentStatus: a.paymentStatus || a.payment_status || null,
+                      paymentMarkedAt: a.paymentMarkedAt || a.payment_marked_at || null,
+                      paymentMarkedBy: a.paymentMarkedBy || a.payment_marked_by || null,
                       priceAtBooking: a.priceAtBooking || a.price_at_booking || null,
                       clientPhoneNumberAtBooking: a.clientPhoneNumberAtBooking || a.client_phone_number_at_booking || null,
                     }));
@@ -1265,7 +1362,7 @@ const BarberAppointmentsView = ({ barber, shop }) => {
                 )}
 
                 {appt.notes && <p className="text-xs text-slate-500 mt-1 pt-1 border-t border-slate-100 italic">Notas Cliente: {appt.notes}</p>}
-                {appt.notesBarber && <p className="text-xs text-indigo-500 mt-1 pt-1 border-t border-slate-100 italic">Mis Notas: {appt.notesBarber}</p>}
+                {appt.notesBarber && <p className="text-xs text-indigo-500 mt-1 pt-1 border-t border-slate-100 italic">Notas internas: {appt.notesBarber}</p>}
                 {appt.actualEndTime && <p className="text-xs text-green-600 mt-1 pt-1 border-t border-slate-100 italic">Finalizada a las: {new Date(appt.actualEndTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>}
 
                 <div className="mt-3 flex flex-wrap gap-2 items-center justify-between">

@@ -24,6 +24,17 @@ const ensureNotificationSoftDeleteColumns = async () => {
   }
 };
 
+const ensureAppointmentsBarberNotesColumn = async () => {
+  try {
+    await pool.query(
+      `ALTER TABLE appointments
+       ADD COLUMN IF NOT EXISTS notes_barber TEXT`
+    );
+  } catch (error) {
+    console.error('Error asegurando columna notes_barber en appointments:', error);
+  }
+};
+
 const ensureAppointmentClientHiddenColumn = async () => {
   try {
     await pool.query(
@@ -69,6 +80,32 @@ const ensureUsersPhotoUrlColumn = async () => {
     );
   } catch (error) {
     console.error('Error asegurando columna photo_url en users:', error);
+  }
+};
+
+const ensureUsersGenderColumn = async () => {
+  try {
+    await pool.query(
+      `ALTER TABLE users
+       ADD COLUMN IF NOT EXISTS gender TEXT`
+    );
+  } catch (error) {
+    console.error('Error asegurando columna gender en users:', error);
+  }
+};
+
+const ensureBarberShopsCategoriesColumn = async () => {
+  try {
+    await pool.query(
+      `ALTER TABLE barber_shops
+       ADD COLUMN IF NOT EXISTS categories TEXT[]`
+    );
+    await pool.query(
+      `ALTER TABLE barber_shops
+       ALTER COLUMN categories SET DEFAULT ARRAY['barberia']::text[]`
+    );
+  } catch (error) {
+    console.error('Error asegurando columna categories en barber_shops:', error);
   }
 };
 
@@ -166,8 +203,11 @@ const startServer = async () => {
   await ensureConversationArchiveColumns();
   await ensureUsersWhatsappLinkColumn();
   await ensureUsersPhotoUrlColumn();
+  await ensureUsersGenderColumn();
+  await ensureBarberShopsCategoriesColumn();
   await ensureAppointmentsClientReviewedColumn();
   await ensureAppointmentsActualEndTimeColumn();
+  await ensureAppointmentsBarberNotesColumn();
   await ensureAppointmentsPaymentColumns();
   await ensureReviewsColumns();
 

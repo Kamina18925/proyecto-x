@@ -75,9 +75,35 @@ const RatingStars = ({ value, idPrefix, sizeClass = 'w-4 h-4' }) => {
   );
 };
 
+const SHOP_CATEGORY_OPTIONS = [
+  { key: 'barberia', label: 'Barbería' },
+  { key: 'salon_belleza', label: 'Salón de Belleza' },
+  { key: 'spa_estetica', label: 'Spa / Estética' },
+  { key: 'unas', label: 'Uñas' },
+  { key: 'depilacion', label: 'Depilación' },
+];
+
+const normalizeCategoriesLocal = (raw) => {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    return raw
+      .split(',')
+      .map(v => String(v || '').trim())
+      .filter(Boolean);
+  }
+  return [];
+};
+
+const getSuggestedCategoryForGender = (genderRaw) => {
+  const g = String(genderRaw || '').trim().toLowerCase();
+  if (g === 'male') return 'barberia';
+  if (g === 'female') return 'salon_belleza';
+  return '';
+};
+
 // Helpers del original
 const getShopOpenStatus = (shop, targetDate, allUsers, allBarberAvailability) => {
-  if (!shop) return { status: 'Desconocido', reason: 'Barbería no especificada', cssClass: 'bg-slate-100 text-slate-600' };
+  if (!shop) return { status: 'Desconocido', reason: 'Negocio no especificado', cssClass: 'bg-slate-100 text-slate-600' };
   const dayOfWeekIndex = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate()).getUTCDay();
   const dayKey = ['D', 'L', 'M', 'X', 'J', 'V', 'S'][dayOfWeekIndex];
   const hours = shop.openingHours?.[dayKey];
@@ -96,6 +122,7 @@ const getShopOpenStatus = (shop, targetDate, allUsers, allBarberAvailability) =>
 const ClientDashboard = () => {
   const { state, dispatch } = useContext(AppContext);
   const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [selectedShop, setSelectedShop] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [showReviewsModal, setShowReviewsModal] = useState(false);
@@ -156,6 +183,7 @@ const ClientDashboard = () => {
   
   // Referencias para controlar el ciclo de vida del componente
   const isMounted = useRef(true);
+  const autoSuggestedCategoryOnce = useRef(false);
 
   useEffect(() => {
     // Establecer la referencia de montaje al inicio
@@ -166,6 +194,16 @@ const ClientDashboard = () => {
       isMounted.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (autoSuggestedCategoryOnce.current) return;
+    if (categoryFilter) return;
+    const suggested = getSuggestedCategoryForGender(state?.currentUser?.gender);
+    if (suggested) {
+      setCategoryFilter(suggested);
+      autoSuggestedCategoryOnce.current = true;
+    }
+  }, [categoryFilter, state?.currentUser?.gender]);
 
   useEffect(() => {
     if (activeView !== 'profile') return;
@@ -341,7 +379,7 @@ const ClientDashboard = () => {
     if (!url) {
       dispatch({
         type: 'SHOW_NOTIFICATION',
-        payload: { message: 'Esta barbería no tiene WhatsApp configurado.', type: 'error' }
+        payload: { message: 'Este negocio no tiene WhatsApp configurado.', type: 'error' }
       });
       return;
     }
@@ -375,7 +413,7 @@ const ClientDashboard = () => {
     if (!url) {
       dispatch({
         type: 'SHOW_NOTIFICATION',
-        payload: { message: 'Este barbero no tiene WhatsApp configurado.', type: 'error' }
+        payload: { message: 'Este profesional no tiene WhatsApp configurado.', type: 'error' }
       });
       return;
     }
@@ -389,11 +427,11 @@ const ClientDashboard = () => {
     dispatch({
       type: 'SHOW_MODAL',
       payload: {
-        props: { title: 'Chatear con el barbero' },
+        props: { title: 'Chatear con el profesional' },
         content: (
           <div className="p-4 space-y-3">
             <p className="text-sm text-slate-600">
-              Elige cómo quieres comunicarte con <span className="font-semibold">{barber?.name || barber?.nombre || 'el barbero'}</span>.
+              Elige cómo quieres comunicarte con <span className="font-semibold">{barber?.name || barber?.nombre || 'el profesional'}</span>.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
@@ -491,6 +529,12 @@ const ClientDashboard = () => {
           startTime: a.startTime || a.date || null,
           status: a.status || 'confirmed',
           notes: a.notes || null,
+          notesBarber: a.notesBarber !== undefined ? a.notesBarber : (a.notes_barber !== undefined ? a.notes_barber : null),
+          actualEndTime: a.actualEndTime || a.actual_end_time || null,
+          paymentMethod: a.paymentMethod || a.payment_method || null,
+          paymentStatus: a.paymentStatus || a.payment_status || null,
+          paymentMarkedAt: a.paymentMarkedAt || a.payment_marked_at || null,
+          paymentMarkedBy: a.paymentMarkedBy || a.payment_marked_by || null,
           hiddenForClient: a.hiddenForClient !== undefined ? a.hiddenForClient : (a.hidden_for_client !== undefined ? a.hidden_for_client : false),
           priceAtBooking: a.priceAtBooking || a.price_at_booking || null,
           clientPhoneNumberAtBooking: a.clientPhoneNumberAtBooking || a.client_phone_number_at_booking || null,
@@ -1146,7 +1190,7 @@ const ClientDashboard = () => {
 
     // Si no hay ningún barbero que ofrezca este servicio en esta barbería, no permitir la reserva
     if (barbers.length === 0) {
-      dispatch({ type: 'SHOW_NOTIFICATION', payload: { message: 'No hay barberos que ofrezcan este servicio en esta barbería.', type: 'error' } });
+      dispatch({ type: 'SHOW_NOTIFICATION', payload: { message: 'No hay profesionales que ofrezcan este servicio en este negocio.', type: 'error' } });
       return;
     }
     let finalBarber = selectedBarber;
@@ -1156,14 +1200,14 @@ const ClientDashboard = () => {
         finalBarber = barbers[0];
         setSelectedBarber(finalBarber);
       } else if (barbers.length > 1) {
-        dispatch({ type: 'SHOW_NOTIFICATION', payload: { message: 'Selecciona el barbero que realizará el servicio.', type: 'error' } });
+        dispatch({ type: 'SHOW_NOTIFICATION', payload: { message: 'Selecciona el profesional que realizará el servicio.', type: 'error' } });
         return;
       }
     }
 
     // Seguridad extra: no crear citas sin barbero asignado
     if (!finalBarber) {
-      dispatch({ type: 'SHOW_NOTIFICATION', payload: { message: 'No se pudo determinar el barbero para esta cita.', type: 'error' } });
+      dispatch({ type: 'SHOW_NOTIFICATION', payload: { message: 'No se pudo determinar el profesional para esta cita.', type: 'error' } });
       return;
     }
 
@@ -1228,7 +1272,7 @@ const ClientDashboard = () => {
         setBookingLoading(false);
         dispatch({
           type: 'SHOW_NOTIFICATION',
-          payload: { message: 'Esa hora ya está ocupada para este barbero. Elige otra hora.', type: 'error' },
+          payload: { message: 'Esa hora ya está ocupada para este profesional. Elige otra hora.', type: 'error' },
         });
         return;
       }
@@ -1282,7 +1326,7 @@ const ClientDashboard = () => {
     if (targetBarberId == null) {
       dispatch({
         type: 'SHOW_NOTIFICATION',
-        payload: { message: 'Selecciona un barbero para enviarle el pedido de este producto.', type: 'error' },
+        payload: { message: 'Selecciona un profesional para enviarle el pedido de este producto.', type: 'error' },
       });
       return;
     }
@@ -1304,11 +1348,11 @@ const ClientDashboard = () => {
 
       const orderDetails = [
         `Pedido de producto: ${selectedProduct.name}`,
-        `Barbería: ${resolvedPurchaseShop.name}`,
+        `Negocio: ${resolvedPurchaseShop.name}`,
         hasDiscount
           ? `Precio: RD$${Number(effectivePrice).toFixed(2)} (antes RD$${(Number(selectedProduct.price) || 0).toFixed(2)} - ${offerPercent}%)`
           : `Precio: RD$${(Number(effectivePrice) || 0).toFixed(2)}`,
-        `Entrega: ${purchaseMethod === 'pickup' ? 'Retirar en la barbería' : 'Envío a domicilio'}`,
+        `Entrega: ${purchaseMethod === 'pickup' ? 'Retirar en el negocio' : 'Envío a domicilio'}`,
         purchaseMethod === 'delivery' ? `Dirección: ${purchaseAddress || '(no especificada)'}` : null,
         purchaseMethod === 'delivery' ? `Teléfono: ${purchasePhone || '(no especificado)'}` : null,
         purchaseNotes?.trim() ? `Notas: ${purchaseNotes.trim()}` : null,
@@ -1713,7 +1757,7 @@ const ClientDashboard = () => {
             type="button"
           >
             <i className="fas fa-store-alt mr-2"></i>
-            Barberías
+            Negocios
           </button>
           <button
             className={`px-4 py-2 rounded-lg shadow-md flex items-center justify-start ${activeView === 'appointments' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}
@@ -1755,14 +1799,14 @@ const ClientDashboard = () => {
 
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
-          <h1 className="text-3xl font-bold text-slate-800">Encuentra tu Barbería</h1>
+          <h1 className="text-3xl font-bold text-slate-800">Encuentra tu negocio</h1>
           <div className="hidden md:flex flex-wrap gap-3">
             <button 
               className={`px-4 py-2 rounded-lg shadow-md flex items-center ${activeView === 'shops' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}
               onClick={() => handleChangeView('shops')}
             >
               <i className="fas fa-store-alt mr-2"></i>
-              Barberías
+              Negocios
             </button>
             <button 
               className={`px-4 py-2 rounded-lg shadow-md flex items-center ${activeView === 'appointments' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}
@@ -1796,13 +1840,28 @@ const ClientDashboard = () => {
           </div>
         </div>
         <div className="mb-8">
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="p-2 border border-slate-300 rounded-md text-sm shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
-            placeholder="Buscar Barbería"
-          />
+          <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="p-2 border border-slate-300 rounded-md text-sm shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+              placeholder="Buscar negocio"
+            />
+            <select
+              value={categoryFilter}
+              onChange={(e) => {
+                setCategoryFilter(e.target.value);
+                autoSuggestedCategoryOnce.current = true;
+              }}
+              className="p-2 border border-slate-300 rounded-md text-sm shadow-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+            >
+              <option value="">Todas las categorías</option>
+              {SHOP_CATEGORY_OPTIONS.map(opt => (
+                <option key={opt.key} value={opt.key}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {(state.barberShops || []).filter(shop => {
@@ -1810,15 +1869,20 @@ const ClientDashboard = () => {
             const name = (shop.name || '').toLowerCase();
             const address = (shop.address || '').toLowerCase();
             const city = (shop.city || '').toLowerCase();
-            return (
+            const rawCats = shop?.categories ?? shop?.schedule?.categories;
+            const catsArr = normalizeCategoriesLocal(rawCats);
+            const effectiveCats = catsArr.length ? catsArr : ['barberia'];
+            const matchesCategory = !categoryFilter || effectiveCats.includes(categoryFilter);
+            const matchesTerm = (
               name.includes(term) ||
               address.includes(term) ||
               city.includes(term)
             );
+            return matchesCategory && matchesTerm;
           }).map(shop => (
             <div key={shop.id} className="bg-white rounded-xl shadow-lg p-6 flex flex-col gap-4">
               <img
-                src={state.barberShopPhotos?.[shop.id]?.[0] || 'https://placehold.co/400x200?text=Barbería'}
+                src={state.barberShopPhotos?.[shop.id]?.[0] || 'https://placehold.co/400x200?text=Negocio'}
                 alt={shop.name}
                 className="rounded-lg object-cover w-full h-40 mb-2"
                 style={{ minHeight: '160px', background: '#eee' }}
@@ -1906,13 +1970,13 @@ const ClientDashboard = () => {
         </div>
       </div>
       {/* Modal para detalles y reserva */}
-      <Modal isOpen={showModal} onClose={handleCloseModal} title={selectedShop ? `Barbería: ${selectedShop.name}` : ''} size="xl">
+      <Modal isOpen={showModal} onClose={handleCloseModal} title={selectedShop ? `Negocio: ${selectedShop.name}` : ''} size="xl">
         {selectedShop && (
           <div className="space-y-6">
             {/* Galería de fotos */}
             <div className="flex gap-2 overflow-x-auto pb-2">
               {(selectedShop.photos || []).map((url, idx) => (
-                <img key={idx} src={url} alt="Foto barbería" className="h-32 w-48 object-cover rounded shadow" />
+                <img key={idx} src={url} alt="Foto negocio" className="h-32 w-48 object-cover rounded shadow" />
               ))}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2016,9 +2080,9 @@ const ClientDashboard = () => {
             </div>
 
             <div>
-              <h3 className="text-lg font-bold text-indigo-700 mb-2">Selecciona Barbero</h3>
+              <h3 className="text-lg font-bold text-indigo-700 mb-2">Selecciona Profesional</h3>
               {barbersForCurrentSelection.length === 0 ? (
-                <p className="text-sm text-slate-500">No hay barberos asignados para esta barbería/servicio.</p>
+                <p className="text-sm text-slate-500">No hay profesionales asignados para este negocio/servicio.</p>
               ) : (
                 <ul className="flex flex-wrap gap-3">
                   {barbersForCurrentSelection.map(barb => (
@@ -2051,9 +2115,9 @@ const ClientDashboard = () => {
             </div>
             {selectedBarber && (
               <div>
-                <h3 className="text-lg font-bold text-indigo-700 mb-2 mt-4">Servicios del barbero seleccionado</h3>
+                <h3 className="text-lg font-bold text-indigo-700 mb-2 mt-4">Servicios del profesional seleccionado</h3>
                 {getServicesForBarberInShop(selectedShop, selectedBarber).length === 0 ? (
-                  <p className="text-sm text-slate-500">Este barbero aún no tiene servicios asignados.</p>
+                  <p className="text-sm text-slate-500">Este profesional aún no tiene servicios asignados.</p>
                 ) : (
                   <ul className="space-y-1">
                     {getServicesForBarberInShop(selectedShop, selectedBarber).map(svc => (
@@ -2087,13 +2151,13 @@ const ClientDashboard = () => {
                 />
                 {selectedDayOffInfo && (
                   <p className="mt-1 text-xs text-red-600">
-                    Este barbero ha marcado este día como libre
+                    Este profesional ha marcado este día como libre
                     {selectedDayOffInfo.notes ? `: ${selectedDayOffInfo.notes}` : '.'}
                   </p>
                 )}
                 {selectedLeaveEarlyInfo && !selectedDayOffInfo && (
                   <p className="mt-1 text-xs text-amber-700">
-                    Este barbero se retira temprano hoy (hasta {formatTimeTo12h(selectedLeaveEarlyInfo.cutoffTime)})
+                    Este profesional se retira temprano hoy (hasta {formatTimeTo12h(selectedLeaveEarlyInfo.cutoffTime)})
                     {selectedLeaveEarlyInfo.notes ? `: ${selectedLeaveEarlyInfo.notes}` : '.'}
                   </p>
                 )}
@@ -2112,12 +2176,12 @@ const ClientDashboard = () => {
                 </select>
                 {selectedBarber && selectedDate && filteredAvailableTimes.length === 0 && !selectedDayOffInfo && (
                   <p className="mt-1 text-xs text-slate-500">
-                    No hay horarios disponibles para este barbero en esta fecha (puede que ya haya pasado su horario de trabajo o no tenga horario configurado).
+                    No hay horarios disponibles para este profesional en esta fecha (puede que ya haya pasado su horario de trabajo o no tenga horario configurado).
                   </p>
                 )}
                 {selectedBarber && selectedDate && filteredAvailableTimes.length === 0 && selectedDayOffInfo && (
                   <p className="mt-1 text-xs text-red-600">
-                    Este barbero se ha tomado el día libre para esta fecha
+                    Este profesional se ha tomado el día libre para esta fecha
                     {selectedDayOffInfo.notes ? `: ${selectedDayOffInfo.notes}` : '.'}
                   </p>
                 )}
@@ -2192,7 +2256,7 @@ const ClientDashboard = () => {
               />
               <div>
                 <div className="font-semibold text-slate-800 text-sm">{selectedProduct.name}</div>
-                <div className="text-xs text-slate-500">Barbería: {resolvedPurchaseShop?.name}</div>
+                <div className="text-xs text-slate-500">Negocio: {resolvedPurchaseShop?.name}</div>
                 {productHasDiscount(selectedProduct) ? (
                   <div className="text-sm mt-1">
                     <div className="text-[10px] font-bold text-red-500 bg-red-100 px-1.5 py-0.5 rounded inline-block mb-1">Oferta: {getProductOfferPercent(selectedProduct)}%</div>
@@ -2218,7 +2282,7 @@ const ClientDashboard = () => {
                     onChange={() => setPurchaseMethod('pickup')}
                     className="accent-indigo-600"
                   />
-                  <span>Retirar en la barbería</span>
+                  <span>Retirar en el negocio</span>
                 </label>
                 <label className="flex items-center gap-2">
                   <input
@@ -2229,7 +2293,7 @@ const ClientDashboard = () => {
                     onChange={() => setPurchaseMethod('delivery')}
                     className="accent-indigo-600"
                   />
-                  <span>Envío a domicilio (pendiente configurar envíos de la barbería)</span>
+                  <span>Envío a domicilio (pendiente configurar envíos del negocio)</span>
                 </label>
               </div>
             </div>
@@ -2261,7 +2325,7 @@ const ClientDashboard = () => {
               <div>
                 <h4 className="text-sm font-semibold text-slate-800 mb-2">Selecciona Barbero</h4>
                 {getBarbersInShop(resolvedPurchaseShop).length === 0 ? (
-                  <p className="text-sm text-slate-500">No hay barberos disponibles para esta barbería.</p>
+                  <p className="text-sm text-slate-500">No hay barberos disponibles para este negocio.</p>
                 ) : (
                   <ul className="flex flex-wrap gap-3">
                     {getBarbersInShop(resolvedPurchaseShop).map(barb => (
@@ -2289,7 +2353,7 @@ const ClientDashboard = () => {
               </div>
             )}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Notas para la barbería (opcional)</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Notas para el negocio (opcional)</label>
               <textarea
                 className="w-full border border-slate-300 rounded-md p-2 text-sm"
                 rows={2}
@@ -2341,7 +2405,7 @@ const ClientDashboard = () => {
                         <span className="text-xs text-slate-500">({reviewsLabel})</span>
                       </div>
                       <div className="text-xs text-slate-500 mt-1">
-                        Aquí puedes ver todas las reseñas de esta barbería.
+                        Aquí puedes ver todas las reseñas de este negocio.
                       </div>
                     </div>
                     {eligible.length > 0 && !reviewsModalShowLeaveReview && (
@@ -2441,7 +2505,7 @@ const ClientDashboard = () => {
               if (eligible.length === 0) {
                 return (
                   <div className="text-xs text-slate-500">
-                    Para dejar una reseña necesitas tener una cita completada en esta barbería.
+                    Para dejar una reseña necesitas tener una cita completada en este negocio.
                   </div>
                 );
               }

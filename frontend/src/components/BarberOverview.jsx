@@ -74,6 +74,15 @@ const BarberOverview = ({ barber, shop }) => {
     return String(appointment?.status || '').trim().toLowerCase();
   };
 
+  const normalizePaymentStatus = (st) => {
+    const s = String(st || '').trim().toLowerCase();
+    if (!s) return null;
+    if (s === 'paid' || s === 'pagado') return 'paid';
+    if (s === 'unpaid' || s === 'no_paid' || s === 'no_payo' || s === 'no_pagado' || s === 'no pago') return 'unpaid';
+    if (s === 'pending' || s === 'pendiente') return 'pending';
+    return null;
+  };
+
   const getHistoryRangeMs = () => {
     const rdTodayStr = getRdDateString(new Date());
     if (!rdTodayStr) return { startMs: null, endMs: null };
@@ -307,6 +316,8 @@ const BarberOverview = ({ barber, shop }) => {
   
   // Calcular ingresos de las citas completadas
   const totalEarnings = completed.reduce((sum, appt) => {
+    const paymentStatus = normalizePaymentStatus(appt?.paymentStatus ?? appt?.payment_status ?? null);
+    if (paymentStatus === 'unpaid') return sum;
     return sum + getAppointmentTotalPrice(appt);
   }, 0);
 
@@ -329,7 +340,11 @@ const BarberOverview = ({ barber, shop }) => {
     return st === 'cancelled' || st === 'cancelada' || st === 'cancelado' || st.startsWith('cancelled') || st.startsWith('cancel');
   });
 
-  const historyEarnings = historyCompleted.reduce((sum, appt) => sum + getAppointmentTotalPrice(appt), 0);
+  const historyEarnings = historyCompleted.reduce((sum, appt) => {
+    const paymentStatus = normalizePaymentStatus(appt?.paymentStatus ?? appt?.payment_status ?? null);
+    if (paymentStatus === 'unpaid') return sum;
+    return sum + getAppointmentTotalPrice(appt);
+  }, 0);
   
   // Foto de perfil (intentar varios posibles campos antes de usar avatar por iniciales)
   const photoFromUser =
@@ -343,7 +358,7 @@ const BarberOverview = ({ barber, shop }) => {
     null;
 
   const photo = photoFromUser ||
-    'https://ui-avatars.com/api/?name=' + encodeURIComponent(barber?.name || 'Barbero') + '&background=4f46e5&color=fff&size=128';
+    'https://ui-avatars.com/api/?name=' + encodeURIComponent(barber?.name || 'Profesional') + '&background=4f46e5&color=fff&size=128';
   
   return (
     <>
@@ -352,7 +367,7 @@ const BarberOverview = ({ barber, shop }) => {
           <div className="relative w-32 h-32">
             <img 
               src={photo} 
-              alt="Foto del barbero" 
+              alt="Foto del profesional" 
               className="w-32 h-32 rounded-full border-4 border-indigo-200 shadow-md object-cover" 
             />
             <label className="absolute bottom-2 right-2 bg-white rounded-full p-1 shadow cursor-pointer hover:bg-indigo-50 transition-colors">

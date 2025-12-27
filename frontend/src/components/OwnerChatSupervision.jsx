@@ -103,7 +103,7 @@ const OwnerChatSupervision = ({ ownerId }) => {
             </select>
           </div>
           <div className="flex-1">
-            <label className="block text-slate-600 mb-1">Filtrar por barbero</label>
+            <label className="block text-slate-600 mb-1">Filtrar por profesional</label>
             <select
               value={barberFilter}
               onChange={(e) => setBarberFilter(e.target.value)}
@@ -138,7 +138,7 @@ const OwnerChatSupervision = ({ ownerId }) => {
                 <div className="flex justify-between items-center gap-2">
                   <span className="font-semibold text-slate-800 truncate">
                     {conv.client_name || 'Cliente'} 
-                    <span className="text-slate-400">/</span> {conv.barber_name || 'Barbero'}
+                    <span className="text-slate-400">/</span> {conv.barber_name || 'Profesional'}
                   </span>
                   <span className="text-[11px] text-slate-400 shrink-0">
                     {formatDateTime(conv.last_message_at || conv.updated_at || conv.created_at)}
@@ -150,7 +150,7 @@ const OwnerChatSupervision = ({ ownerId }) => {
                 {totalUnread > 0 && (
                   <div className="text-[11px] text-amber-600 font-semibold flex items-center gap-1">
                     <i className="fas fa-circle text-[7px]"></i>
-                    {totalUnread} mensaje(s) sin leer (cliente: {unreadClient}, barbero: {unreadBarber})
+                    {totalUnread} mensaje(s) sin leer (cliente: {unreadClient}, profesional: {unreadBarber})
                   </div>
                 )}
                 {conv.last_message_text && (
@@ -279,7 +279,7 @@ const OwnerComposeMessage = ({
             checked={composeTarget === 'barber'}
             onChange={() => setComposeTarget('barber')}
           />
-          <span>Barbero</span>
+          <span>Profesional</span>
         </label>
         <label className="inline-flex items-center gap-1">
           <input

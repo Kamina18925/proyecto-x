@@ -1,6 +1,27 @@
 import pool from '../db/connection.js';
 import bcrypt from 'bcrypt';
 
+const normalizeCategories = (raw) => {
+  const allowed = new Set(['barberia', 'salon_belleza', 'spa_estetica', 'unas', 'depilacion']);
+  let arr = [];
+
+  if (Array.isArray(raw)) {
+    arr = raw;
+  } else if (typeof raw === 'string') {
+    arr = raw.split(',');
+  } else {
+    arr = [];
+  }
+
+  const normalized = arr
+    .map(v => String(v || '').trim().toLowerCase())
+    .filter(Boolean)
+    .filter(v => allowed.has(v));
+
+  const unique = Array.from(new Set(normalized));
+  return unique.length ? unique : ['barberia'];
+};
+
 // Obtener todas las barberías
 export const getAllBarberShops = async (req, res) => {
   try {
@@ -11,6 +32,7 @@ export const getAllBarberShops = async (req, res) => {
         bs.name, 
         bs.address, 
         bs.schedule,
+        COALESCE(bs.categories, ARRAY['barberia']::text[]) as categories,
         COALESCE(rv.avg_rating, bs.rating, 0.0) as rating,
         COALESCE(rv.review_count, 0) as review_count,
         u.name as owner_name,
@@ -46,6 +68,7 @@ export const getBarberShopsByOwner = async (req, res) => {
         name, 
         address,
         schedule,
+        COALESCE(categories, ARRAY['barberia']::text[]) as categories,
         rating,
         owner_id
       FROM barber_shops
@@ -73,6 +96,7 @@ export const getBarberShopById = async (req, res) => {
         bs.name,
         bs.address,
         bs.schedule,
+        COALESCE(bs.categories, ARRAY['barberia']::text[]) as categories,
         COALESCE(rv.avg_rating, bs.rating, 0.0) as rating,
         COALESCE(rv.review_count, 0) as review_count,
         bs.owner_id,
@@ -307,7 +331,8 @@ export const createBarberShop = async (req, res) => {
       ownerName,
       ownerEmail,
       ownerPassword,
-      ownerIsAlsoBarber
+      ownerIsAlsoBarber,
+      categories
     } = req.body;
 
     console.log('createBarberShop - body recibido:', req.body);
@@ -323,6 +348,7 @@ export const createBarberShop = async (req, res) => {
     const finalDescription = descripcion || description || null;
     const finalSchedule = horario || openHours || null;
     const finalWhatsappLink = whatsappLink || whatsapp_link || whatsapp || null;
+    const finalCategories = normalizeCategories(categories);
 
     if (!finalName) {
       await client.query('ROLLBACK');
@@ -381,12 +407,13 @@ export const createBarberShop = async (req, res) => {
         address,
         schedule,
         rating,
-        owner_id
+        owner_id,
+        categories
       )
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING id, name, address, schedule, rating, owner_id
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id, name, address, schedule, rating, owner_id, categories
       `,
-      [finalName, finalAddress, scheduleJson, null, ownerUserId]
+      [finalName, finalAddress, scheduleJson, null, ownerUserId, finalCategories]
     );
 
     const shop = insertResult.rows[0];
@@ -446,7 +473,8 @@ export const updateBarberShop = async (req, res) => {
       lat,
       lng,
       owner_id,
-      ownerId
+      ownerId,
+      categories
     } = req.body;
     
     // Verificar que la barbería existe
@@ -476,6 +504,10 @@ export const updateBarberShop = async (req, res) => {
 
     // Reconstruir schedule JSONB mezclando con el existente
     const currentSchedule = checkResult.rows[0].schedule || {};
+    const currentCategories = Array.isArray(checkResult.rows[0].categories) && checkResult.rows[0].categories.length
+      ? checkResult.rows[0].categories
+      : ['barberia'];
+    const finalCategories = categories !== undefined ? normalizeCategories(categories) : currentCategories;
     const scheduleJson = {
       ...currentSchedule,
       ...(finalSchedule !== null ? { openHours: finalSchedule } : {}),
@@ -496,16 +528,18 @@ export const updateBarberShop = async (req, res) => {
         name = $1,
         address = $2,
         schedule = $3,
-        owner_id = $4,
+        categories = $4,
+        owner_id = $5,
         updated_at = NOW()
-      WHERE id = $5
-      RETURNING id, name, address, schedule, rating, owner_id
+      WHERE id = $6
+      RETURNING id, name, address, schedule, rating, owner_id, categories
     `;
     
     const result = await client.query(updateQuery, [
       finalName,
       finalAddress,
       scheduleJson,
+      finalCategories,
       finalOwnerId,
       id
     ]);

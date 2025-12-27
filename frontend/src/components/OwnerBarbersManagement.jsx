@@ -156,7 +156,7 @@ const OwnerBarbersManagement = () => {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!form.name || !form.email || !form.phone || (!selectedBarber && !form.password)) {
-      setError('Todos los campos son obligatorios. La contraseña es obligatoria para nuevos barberos.');
+      setError('Todos los campos son obligatorios. La contraseña es obligatoria para nuevos profesionales.');
       return;
     }
     if (uploading) {
@@ -178,7 +178,7 @@ const OwnerBarbersManagement = () => {
         }
       }});
       dispatch({ type: 'SHOW_NOTIFICATION', payload: { 
-        message: `El barbero ${form.name} ha sido añadido exitosamente. Podrá acceder con su email y contraseña.`, 
+        message: `El profesional ${form.name} ha sido añadido exitosamente. Podrá acceder con su email y contraseña.`, 
         type: 'success' 
       }});
     } else if (showEdit && selectedBarber) {
@@ -200,14 +200,14 @@ const OwnerBarbersManagement = () => {
       }});
       
       dispatch({ type: 'SHOW_NOTIFICATION', payload: { 
-        message: `Los datos del barbero ${form.name} han sido actualizados exitosamente.`, 
+        message: `Los datos del profesional ${form.name} han sido actualizados exitosamente.`, 
         type: 'success' 
       }});
     }
     handleCloseModal();
   };
   const handleDelete = (barberId) => {
-    if (window.confirm('¿Seguro que deseas eliminar este barbero?')) {
+    if (window.confirm('¿Seguro que deseas eliminar este profesional?')) {
       // Eliminar del array de usuarios
       dispatch({ type: 'DELETE_USER', payload: { id: barberId } });
       
@@ -218,7 +218,7 @@ const OwnerBarbersManagement = () => {
       dispatch({ 
         type: 'SHOW_NOTIFICATION', 
         payload: { 
-          message: 'Barbero eliminado correctamente', 
+          message: 'Profesional eliminado correctamente', 
           type: 'success' 
         } 
       });
@@ -231,11 +231,11 @@ const OwnerBarbersManagement = () => {
     <div className="bg-white rounded-xl shadow-lg p-8">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4 gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Gestión de Barberos</h2>
-          <p className="text-sm text-slate-500 mt-1">Aquí puedes ver todos los barberos, filtrarlos por barbería y realizar búsquedas rápidas.</p>
+          <h2 className="text-2xl font-bold text-slate-800">Gestión de Profesionales</h2>
+          <p className="text-sm text-slate-500 mt-1">Aquí puedes ver todos los profesionales, filtrarlos por barbería y realizar búsquedas rápidas.</p>
         </div>
         <button className="bg-green-500 hover:bg-green-600 text-white px-5 py-2 rounded shadow text-sm font-semibold flex items-center" onClick={handleOpenAdd}>
-          <i className="fas fa-plus-circle mr-2"></i>Añadir Barbero
+          <i className="fas fa-plus-circle mr-2"></i>Añadir Profesional
         </button>
       </div>
 
@@ -249,7 +249,7 @@ const OwnerBarbersManagement = () => {
           >
             <option value="all">Todas las barberías</option>
             <option value="unassigned">Solo no asignados</option>
-            <option value="recent">Barberos recientes</option>
+            <option value="recent">Profesionales recientes</option>
             {ownerShops.length > 0 && (
               <optgroup label="Barberías">
                 {ownerShops.map(shop => (
@@ -323,7 +323,7 @@ const OwnerBarbersManagement = () => {
             </div>
 
             <div className="mb-3">
-              <label className="block text-xs font-semibold text-slate-600 mb-1">Permisos del barbero</label>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Permisos del profesional</label>
               <label className="flex items-center gap-2 text-xs text-slate-700 select-none">
                 <input
                   type="checkbox"
@@ -371,11 +371,11 @@ const OwnerBarbersManagement = () => {
         ))}
       </div>
       {barbers.length === 0 && (
-        <div className="text-center text-slate-500 py-12">No hay barberos registrados en esta barbería.</div>
+        <div className="text-center text-slate-500 py-12">No hay profesionales registrados en esta barbería.</div>
       )}
       {/* Modal para añadir/editar barbero */}
       {(showAdd || showEdit) && (
-        <Modal isOpen={showAdd || showEdit} onClose={handleCloseModal} title={showAdd ? 'Añadir Barbero' : 'Editar Barbero'} size="md">
+        <Modal isOpen={showAdd || showEdit} onClose={handleCloseModal} title={showAdd ? 'Añadir Profesional' : 'Editar Profesional'} size="md">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-semibold mb-1">Nombre</label>
@@ -393,12 +393,12 @@ const OwnerBarbersManagement = () => {
             <div>
               <label className="block text-sm font-semibold mb-1">Contraseña</label>
               <input type="password" name="password" value={form.password} onChange={handleChange} className="w-full p-2 border rounded" />
-              <p className="text-xs text-slate-500 mt-1"><i className="fas fa-info-circle mr-1 text-indigo-400"></i>Contraseña para que el barbero acceda a la aplicación</p>
-              {!selectedBarber && <p className="text-xs text-slate-500 mt-1"><i className="fas fa-exclamation-circle mr-1 text-amber-500"></i>Obligatorio para nuevos barberos</p>}
+              <p className="text-xs text-slate-500 mt-1"><i className="fas fa-info-circle mr-1 text-indigo-400"></i>Contraseña para que el profesional acceda a la aplicación</p>
+              {!selectedBarber && <p className="text-xs text-slate-500 mt-1"><i className="fas fa-exclamation-circle mr-1 text-amber-500"></i>Obligatorio para nuevos profesionales</p>}
               {selectedBarber && <p className="text-xs text-slate-500 mt-1"><i className="fas fa-exclamation-circle mr-1 text-amber-500"></i>Dejar vacío para mantener la contraseña actual</p>}
             </div>
             <div>
-              <label className="block text-sm font-semibold mb-1">Foto del Barbero</label>
+              <label className="block text-sm font-semibold mb-1">Foto del Profesional</label>
               <div 
                 className={`w-full border-2 border-dashed rounded-md p-4 mb-2 transition-colors ${preview || form.photoUrl ? 'border-green-400 bg-green-50' : 'border-slate-300 hover:border-indigo-400 bg-slate-50'}`}
                 onDragOver={(e) => {

@@ -217,13 +217,13 @@ const OwnerProductsManagement = ({ shop }) => {
             onClick={() => setFilterType('barbers')} 
             className={`px-3 py-2 rounded text-sm font-medium ${filterType === 'barbers' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
           >
-            De Barberos
+            De Profesionales
           </button>
         </div>
       </div>
       
       <div className="mb-4 text-sm text-slate-500">
-        Mostrando {products.length} productos {filterType === 'all' ? 'en total' : filterType === 'shop' ? 'de la tienda' : 'de barberos'}
+        Mostrando {products.length} productos {filterType === 'all' ? 'en total' : filterType === 'shop' ? 'de la tienda' : 'de profesionales'}
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
         {products.map((prod, index) => {
@@ -238,7 +238,7 @@ const OwnerProductsManagement = ({ shop }) => {
             <div key={`${prod.id}-${index}`} className="bg-white rounded-lg shadow p-5 flex flex-col relative">
               {/* Etiqueta que indica si es producto de barbero o de tienda */}
               <div className={`absolute top-2 right-2 text-xs font-medium px-2 py-1 rounded-full ${barber ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}`}>
-                {barber ? 'Barbero' : 'Tienda'}
+                {barber ? 'Profesional' : 'Tienda'}
               </div>
               
               <img src={prod.photoUrl} alt={prod.name} className="w-full h-32 object-cover rounded mb-3" />
@@ -450,7 +450,7 @@ const OwnerProductsManagement = ({ shop }) => {
               }
 
               if (assignMode === 'barber' && !form.barberId) {
-                setError('Debes seleccionar un barbero para este producto.');
+                setError('Debes seleccionar un profesional para este producto.');
                 return;
               }
 
@@ -525,281 +525,6 @@ const OwnerProductsManagement = ({ shop }) => {
                     <input
                       type="radio"
                       name="assignModeEdit"
-                      value="barber"
-                      checked={assignMode === 'barber'}
-                      onChange={() => setAssignMode('barber')}
-                    />
-                    <span>Barbero</span>
-                  </label>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Precio (RD$)*</label>
-                    <input 
-                      type="number" 
-                      className="w-full border p-2 rounded"
-                      placeholder="Ej: 350"
-                      value={form.price}
-                      onChange={e => setForm(f => ({ ...f, price: e.target.value }))}
-                      required
-                      min="0"
-                      step="0.01"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Stock*</label>
-                    <input 
-                      type="number" 
-                      className="w-full border p-2 rounded"
-                      placeholder="Ej: 10"
-                      value={form.stock}
-                      onChange={e => setForm(f => ({ ...f, stock: e.target.value }))}
-                      required
-                      min="0"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Categoría*</label>
-                  <input 
-                    type="text" 
-                    className="w-full border p-2 rounded"
-                    placeholder="Ej: Geles, Aceites, Shampoo"
-                    value={form.category}
-                    onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
-                    required
-                  />
-                </div>
-                {assignMode === 'barber' && (
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Asignar a barbero</label>
-                    <input
-                      type="text"
-                      className="w-full border p-2 rounded text-sm"
-                      placeholder="Buscar por nombre o correo..."
-                      value={barberSearch}
-                      onChange={e => setBarberSearch(e.target.value)}
-                    />
-                    <div className="max-h-40 overflow-y-auto border border-slate-200 rounded">
-                      {filteredBarbers.length === 0 && (
-                        <div className="text-xs text-slate-500 p-2">No se encontraron barberos.</div>
-                      )}
-                      {filteredBarbers.map(b => (
-                        <button
-                          key={b.id}
-                          type="button"
-                          onClick={() => setForm(f => ({ ...f, barberId: b.id }))}
-                          className={`w-full text-left px-3 py-1.5 text-xs border-b last:border-b-0 ${form.barberId === b.id ? 'bg-indigo-50 text-indigo-700' : 'bg-white text-slate-700 hover:bg-slate-50'}`}
-                        >
-                          <div className="font-medium">{b.name}</div>
-                          <div className="text-[11px] text-slate-500">{b.email}</div>
-                        </button>
-                      ))}
-                    </div>
-                    {assignMode === 'barber' && !form.barberId && (
-                      <div className="text-xs text-red-500">Debes seleccionar un barbero para este producto.</div>
-                    )}
-                  </div>
-                )}
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Oferta (%) (opcional)</label>
-                  <input 
-                    type="number" 
-                    className="w-full border p-2 rounded"
-                    placeholder="Ej: 20"
-                    value={form.offer}
-                    onChange={e => setForm(f => ({ ...f, offer: e.target.value }))}
-                    min="0"
-                    max="100"
-                    step="0.01"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Descripción</label>
-                  <textarea
-                    className="w-full border p-2 rounded"
-                    placeholder="Descripción"
-                    value={form.description}
-                    onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                    rows={2}
-                  ></textarea>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Imagen del producto*</label>
-                  <div className="w-full mb-2">
-                    {preview ? (
-                      <div className="preview-container bg-white p-4 border border-slate-200 rounded-lg">
-                        <img 
-                          src={preview} 
-                          alt="Vista previa" 
-                          className="w-full max-h-32 object-contain rounded mb-2" 
-                          key={`img-${preview}`}
-                        />
-                        <p className="text-sm text-green-600 font-medium mb-1">¡Imagen cargada correctamente!</p>
-                        <button 
-                          type="button" 
-                          className="text-xs text-red-500 hover:text-red-700"
-                          onClick={handleRemoveImage}
-                        >
-                          Cambiar imagen
-                        </button>
-                      </div>
-                    ) : (
-                      <ImageDropzone onImageSelected={handleImageUpload} setError={setError} />
-                    )}
-                  </div>
-                </div>
-              </div>
-              {error && <div className="text-red-500 text-sm mt-2">{error}</div>}
-              <div className="flex gap-2 justify-end mt-4">
-                <button 
-                  type="button" 
-                  className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded" 
-                  onClick={() => {
-                    setShowEdit(false);
-                    setCurrentProduct(null);
-                    setForm({ name: '', price: '', stock: '', category: '', photoUrl: '', offer: '', description: '', barberId: '' });
-                    setAssignMode('shop');
-                    setBarberSearch('');
-                    setPreview('');
-                    setError('');
-                  }}
-                >
-                  Cancelar
-                </button>
-                <button 
-                  type="submit" 
-                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded flex items-center justify-center"
-                  disabled={uploading}
-                >
-                  {uploading ? (
-                    <>
-                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Guardando...
-                    </>
-                  ) : 'Guardar Cambios'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-      
-      {/* Modal para añadir producto */}
-      {showAdd && (
-        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
-          <div className="bg-white p-4 rounded-lg shadow-xl w-full max-w-md max-h-[80vh] overflow-y-auto">
-            <h3 className="text-lg font-bold mb-4">Añadir Producto</h3>
-            <form onSubmit={async e => {
-              e.preventDefault();
-              if (!form.name || !form.price || !form.stock || !form.category) {
-                setError('Todos los campos obligatorios.');
-                return;
-              }
-              if (assignMode === 'barber' && !form.barberId) {
-                setError('Debes seleccionar un barbero para este producto.');
-                return;
-              }
-              // Si no hay imagen subida, mostrar error
-              if (!form.photoUrl) {
-                setError('Debes subir una imagen de producto válida antes de guardar.');
-                return;
-              }
-              setError('');
-              dispatch({
-                type: 'ADD_PRODUCT',
-                payload: {
-                  productData: {
-                    name: form.name,
-                    price: Number(form.price),
-                    stock: Number(form.stock),
-                    category: form.category,
-                    photoUrl: form.photoUrl,
-                    offer: form.offer,
-                    description: form.description,
-                    barberId: assignMode === 'barber' && form.barberId ? form.barberId : null
-                  },
-                  ownerOrBarberId: shop?.ownerId,
-                  shopId: shop?.id
-                }
-              });
-              
-              // Mostrar notificación
-              dispatch({ 
-                type: 'SHOW_NOTIFICATION', 
-                payload: { 
-                  message: 'Producto añadido correctamente', 
-                  type: 'success' 
-                } 
-              });
-              
-              // Cerrar modal y resetear form
-              setShowAdd(false);
-              setForm({ name: '', price: '', stock: '', category: '', photoUrl: '', offer: '', description: '', barberId: '' });
-              setAssignMode('shop');
-              setBarberSearch('');
-              setPreview('');
-              setError('');
-            }}>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Nombre del producto*</label>
-                  <input 
-                    type="text" 
-                    className="w-full border p-2 rounded"
-                    placeholder="Ej: Gel para cabello"
-                    value={form.name}
-                    onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                    required
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Precio (RD$)*</label>
-                    <input 
-                      type="number" 
-                      className="w-full border p-2 rounded"
-                      placeholder="Ej: 350"
-                      value={form.price}
-                      onChange={e => setForm(f => ({ ...f, price: e.target.value }))}
-                      required
-                      min="0"
-                      step="0.01"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Stock*</label>
-                    <input 
-                      type="number" 
-                      className="w-full border p-2 rounded"
-                      placeholder="Ej: 10"
-                      value={form.stock}
-                      onChange={e => setForm(f => ({ ...f, stock: e.target.value }))}
-                      required
-                      min="0"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Categoría*</label>
-                  <input 
-                    type="text" 
-                    className="w-full border p-2 rounded"
-                    placeholder="Ej: Geles, Aceites, Shampoo"
-                    value={form.category}
-                    onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
-                    required
-                  />
-                </div>
-                <div className="flex gap-4 items-center">
-                  <span className="text-sm font-medium text-slate-700">Tipo de producto:</span>
-                  <label className="flex items-center gap-1 text-sm text-slate-700">
-                    <input
-                      type="radio"
-                      name="assignModeAdd"
                       value="shop"
                       checked={assignMode === 'shop'}
                       onChange={() => setAssignMode('shop')}
@@ -809,27 +534,56 @@ const OwnerProductsManagement = ({ shop }) => {
                   <label className="flex items-center gap-1 text-sm text-slate-700">
                     <input
                       type="radio"
-                      name="assignModeAdd"
+                      name="assignModeEdit"
                       value="barber"
                       checked={assignMode === 'barber'}
                       onChange={() => setAssignMode('barber')}
                     />
-                    <span>Barbero</span>
+                    <span>Profesional</span>
                   </label>
                 </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Precio (RD$)*</label>
+                    <input 
+                      type="number" 
+                      className="w-full border p-2 rounded"
+                      placeholder="Ej: 350"
+                      value={form.price}
+                      onChange={e => setForm(f => ({ ...f, price: e.target.value }))}
+                      required
+                      min="0"
+                      step="0.01"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Stock*</label>
+                    <input
+                      type="number"
+                      className="w-full border p-2 rounded"
+                      placeholder="Ej: 10"
+                      value={form.stock}
+                      onChange={e => setForm(f => ({ ...f, stock: e.target.value }))}
+                      required
+                      min="0"
+                      step="1"
+                    />
+                  </div>
+                </div>
+
                 {assignMode === 'barber' && (
                   <div className="space-y-2">
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Asignar a barbero</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Asignar a profesional</label>
                     <input
                       type="text"
                       className="w-full border p-2 rounded text-sm"
-                      placeholder="Buscar por nombre o correo..."
+                      placeholder="Buscar por nombre..."
                       value={barberSearch}
                       onChange={e => setBarberSearch(e.target.value)}
                     />
                     <div className="max-h-40 overflow-y-auto border border-slate-200 rounded">
                       {filteredBarbers.length === 0 && (
-                        <div className="text-xs text-slate-500 p-2">No se encontraron barberos.</div>
+                        <div className="text-xs text-slate-500 p-2">No se encontraron profesionales.</div>
                       )}
                       {filteredBarbers.map(b => (
                         <button
@@ -844,10 +598,11 @@ const OwnerProductsManagement = ({ shop }) => {
                       ))}
                     </div>
                     {assignMode === 'barber' && !form.barberId && (
-                      <div className="text-xs text-red-500">Debes seleccionar un barbero para este producto.</div>
+                      <div className="text-xs text-red-500">Debes seleccionar un profesional para este producto.</div>
                     )}
                   </div>
                 )}
+
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Oferta (opcional)</label>
                   <input 

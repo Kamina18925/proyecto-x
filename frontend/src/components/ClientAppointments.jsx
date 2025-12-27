@@ -296,7 +296,7 @@ const ClientAppointments = ({ onBack, serverNowIso, serverNowFetchedAtMs }) => {
                           <span className="font-semibold text-indigo-700">{shop?.name || 'Barbería no disponible'}</span> — <span className="text-slate-600">{service?.name || 'Servicio no disponible'}</span>
                         </div>
                         <div className="text-slate-600 text-sm mb-1">
-                          <i className="fa-solid fa-user-tie mr-1 text-indigo-400"></i> {barber?.name || 'Barbero no disponible'}
+                          <i className="fa-solid fa-user-tie mr-1 text-indigo-400"></i> {barber?.name || 'Profesional no disponible'}
                         </div>
                         <div className="text-slate-600 text-sm mb-1">
                           <i className="fa-solid fa-calendar mr-1 text-indigo-400"></i>

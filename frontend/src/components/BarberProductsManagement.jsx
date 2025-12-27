@@ -575,7 +575,7 @@ const BarberProductsManagement = ({ user, shop }) => {
             return (
               <div key={`${prod.id}-${index}`} className="bg-white rounded-lg shadow p-5 flex flex-col relative">
                 <div className="absolute top-2 right-2 text-xs font-medium px-2 py-1 rounded-full bg-purple-100 text-purple-800">
-                  Barbero
+                  Profesional
                 </div>
 
                 <div className="absolute top-2 left-2 flex space-x-1 z-30">
